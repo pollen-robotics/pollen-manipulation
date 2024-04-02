@@ -1,0 +1,71 @@
+right_arm_advanced:
+  r_shoulder_fan:
+    fan:
+      id: 10
+  r_shoulder_pitch:
+    dxl_motor:
+      type: MX-106
+      id: 10
+      offset: 1.57
+      direct: False
+      cw_angle_limit: -3.14
+      ccw_angle_limit: 1.05
+  r_shoulder_roll:
+    dxl_motor:
+      type: MX-106
+      id: 11
+      offset: 1.57
+      direct: False
+      cw_angle_limit: -1.75
+      ccw_angle_limit: 1.57
+  r_arm_yaw:
+    dxl_motor:
+      type: MX-64
+      id: 12
+      direct: False
+      cw_angle_limit: -1.57
+      ccw_angle_limit: 1.57
+  r_elbow_fan:
+    fan:
+      id: 13
+  r_elbow_pitch:
+    dxl_motor:
+      type: MX-106
+      id: 13
+      direct: False
+      cw_angle_limit: 0.0
+      ccw_angle_limit: 2.18
+  r_forearm_yaw:
+    dxl_motor:
+      type: MX-28
+      id: 14
+      direct: False
+      cw_angle_limit: -1.75
+      ccw_angle_limit: 1.75
+  r_wrist_fan:
+    fan:
+      id: 15
+  r_wrist_pitch:
+    dxl_motor:
+      type: MX-28
+      id: 15
+      direct: False
+      cw_angle_limit: -0.79
+      ccw_angle_limit: 0.79
+  r_wrist_roll:
+    dxl_motor:
+      type: AX-18
+      id: 16
+      direct: False
+      cw_angle_limit: -0.95
+      ccw_angle_limit: 0.61
+  r_gripper:
+    dxl_motor:
+      type: AX-18
+      id: 17
+      cw_angle_limit: -0.90
+      ccw_angle_limit: 1.70
+      reduction: -2
+  r_force_gripper:
+    force_sensor:
+      id: 10
