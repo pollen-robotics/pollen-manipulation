@@ -2,15 +2,19 @@ from typing import Dict, List, Optional
 
 import numpy as np
 import numpy.typing as npt
+import os
+from pathlib import Path
 import yaml
 from reachy_sdk import ReachySDK
 from yaml.loader import BaseLoader
 
 
-def read_angle_limits(reachy: ReachySDK, path: str = "../src/config_files/") -> Dict:
+def read_angle_limits(
+    reachy: ReachySDK, path: Path = Path(os.path.dirname(__file__)).parent.parent.joinpath("config_files/reachy_1")
+) -> Dict:
     # Open and read the arm config files
-    right_path = path + "right_arm_advanced.yaml"
-    left_path = path + "left_arm_advanced.yaml"
+    right_path = path / "right_arm_advanced.yaml"
+    left_path = path / "left_arm_advanced.yaml"
 
     angle_limits = {}
 
