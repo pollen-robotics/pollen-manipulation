@@ -10,7 +10,7 @@ from yaml.loader import BaseLoader
 
 
 def read_angle_limits(
-    reachy: ReachySDK, path: Path = Path(os.path.dirname(__file__)).parent.parent.joinpath("config_files/reachy_1")
+    reachy: ReachySDK, path: Path = Path(os.path.dirname(__file__)).parent.parent.joinpath("config_files")
 ) -> Dict:
     # Open and read the arm config files
     right_path = path / "right_arm_advanced.yaml"
