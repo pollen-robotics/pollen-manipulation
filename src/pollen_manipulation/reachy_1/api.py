@@ -254,6 +254,9 @@ class Reachy1ManipulationAPI:
         else:
             goto({self.reachy.r_arm.r_gripper: 20}, duration=1.0)
 
+    def turn_robot_on(self) -> None:
+        self.reachy.turn_on("r_arm")
+
     def stop(self) -> None:
         print("Stopping the robot...")
         self.reachy.turn_off_smoothly("reachy", duration=3)
