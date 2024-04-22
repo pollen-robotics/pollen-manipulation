@@ -33,7 +33,7 @@ class Reachy1ManipulationAPI:
 
         self.grasp_net = ContactGraspNetWrapper()
 
-    def grasp_object(self, object_info: Dict[str, Any], left: bool = False) -> bool:  # w/ vision
+    def grasp_object(self, object_info: Dict[str, Any], left: bool = False) -> bool:
         position = object_info["position"]
         rgb = object_info["rgb"]
         mask = object_info["mask"]
@@ -58,7 +58,7 @@ class Reachy1ManipulationAPI:
         mask: npt.NDArray[np.uint8],
         left: bool = False,
         visualize: bool = False,
-    ) -> Tuple[List[npt.NDArray[np.float32]], List[np.float32]]:  # w/ vision
+    ) -> Tuple[List[npt.NDArray[np.float32]], List[np.float32]]:
         rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
         rgb = rgb.astype(np.uint8)
         depth = depth.astype(np.float32)
