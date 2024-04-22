@@ -1,20 +1,20 @@
-import cv2
+import time
+from typing import Any, Dict, List, Tuple
 
+import cv2
+import FramesViewer.utils as fv_utils
 import numpy as np
 import numpy.typing as npt
-
-import FramesViewer.utils as fv_utils
-
 from contact_graspnet_pytorch.wrapper import ContactGraspNetWrapper
-from pollen_manipulation.reachy_1.reachability import is_pose_reachable, read_angle_limits
-from pollen_manipulation.utils import normalize_pose
-
 from reachy_sdk import ReachySDK
 from reachy_sdk.trajectory import goto
 from reachy_sdk.trajectory.interpolation import InterpolationMode
 
-import time
-from typing import Any, Dict, List, Tuple
+from pollen_manipulation.reachy_1.reachability import (
+    is_pose_reachable,
+    read_angle_limits,
+)
+from pollen_manipulation.utils import normalize_pose
 
 
 class Reachy1ManipulationAPI:
@@ -94,7 +94,7 @@ class Reachy1ManipulationAPI:
 
         # Re sorting because we added new grasp poses at the end of the array
         if len(all_grasp_poses) > 0:
-            all_scores, all_grasp_poses = zip(*sorted(zip(all_scores, all_grasp_poses), reverse=True, key=lambda x: x[0]))
+            all_scores, all_grasp_poses = zip(*sorted(zip(all_scores, all_grasp_poses), reverse=True, key=lambda x: x[0]))  # type: ignore
 
         print("SCORES: ", all_scores)
 
@@ -120,7 +120,6 @@ class Reachy1ManipulationAPI:
         return reachable_grasp_poses, reachable_scores
 
     def execute_grasp(self, grasp_pose: npt.NDArray[np.float32], left: bool = False, duration: float = 2.0) -> bool:
-
         grasp_pose[:3, 3] += np.array([0, 0, 0.05])  # 0.05 to compensate the gravity
 
         pregrasp_pose = grasp_pose.copy()

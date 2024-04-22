@@ -1,34 +1,35 @@
-from typing import Dict, List, Optional
+import os
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import numpy.typing as npt
-import os
-from pathlib import Path
 import yaml
 from reachy_sdk import ReachySDK
+from reachy_sdk.joint import Joint
 from yaml.loader import BaseLoader
 
 
 def read_angle_limits(
     reachy: ReachySDK, path: Path = Path(os.path.dirname(__file__)).parent.parent.joinpath("config_files")
-) -> Dict:
+) -> Dict[str, Tuple[float, float, bool]]:
     # Open and read the arm config files
     right_path = path / "right_arm_advanced.yaml"
     left_path = path / "left_arm_advanced.yaml"
 
-    angle_limits = {}
+    angle_limits: Dict[str, Tuple[float, float, bool]] = {}
 
     with open(right_path) as f:
         data = yaml.load(f, Loader=BaseLoader)
         values = reachy.r_arm.joints.values()
         for j in values:
-            offset = 0
-            inverted = False
+            offset: float = 0.0
+            inverted: bool = False
             if "direct" in data["right_arm_advanced"][j.name]["dxl_motor"]:
                 inverted = bool(data["right_arm_advanced"][j.name]["dxl_motor"]["direct"])
             if "offset" in data["right_arm_advanced"][j.name]["dxl_motor"]:
                 offset = float(data["right_arm_advanced"][j.name]["dxl_motor"]["offset"])
-            inverted_coeff = -1.0 if inverted else 1.0
+            inverted_coeff: float = -1.0 if inverted else 1.0
             angle_limits[j.name] = (
                 inverted_coeff * float(data["right_arm_advanced"][j.name]["dxl_motor"]["cw_angle_limit"]) - offset,
                 inverted_coeff * float(data["right_arm_advanced"][j.name]["dxl_motor"]["ccw_angle_limit"]) - offset,
@@ -78,7 +79,7 @@ def is_valid_angle(angle: float, angle_limits: List[float]) -> bool:
     return valid
 
 
-def is_valid_angles(joints: Dict, angle_limits: List[float]) -> bool:
+def is_valid_angles(joints: Dict[Joint, float], angle_limits: List[float]) -> bool:
     all_ok = True
     for j in joints.keys():
         limits = angle_limits[j.name]
@@ -130,5 +131,4 @@ def is_pose_reachable(
 
 
 def is_reachable(reachy: ReachySDK) -> bool:
-
     return True
