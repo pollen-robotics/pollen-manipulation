@@ -14,7 +14,7 @@ from pollen_manipulation.reachy_1.reachability import (
     is_pose_reachable,
     read_angle_limits,
 )
-from pollen_manipulation.utils import normalize_pose
+from pollen_manipulation.utils import find_close_reachable_pose, normalize_pose
 
 
 class Reachy1ManipulationAPI:
@@ -177,48 +177,26 @@ class Reachy1ManipulationAPI:
             arm = self.reachy.r_arm
 
         target_pose[:3, :3] = self.right_start_pose[:3, :3]
-        target_pose[:3, 3] += np.array([0, 0, 0.05])  # 0.05 to compensate the gravity
+        target_pose[:3, 3] += np.array([0, 0, 0.05 + drop_height])  # 0.05 to compensate the gravity
 
-        # Looking for a reachable target pose
-        orig_target_pose = target_pose.copy()
-        reachable = self._is_pose_reachable(target_pose, left)
+        reachable_target_pose = find_close_reachable_pose(target_pose, self._is_pose_reachable, left=left)
 
-        start = time.time()
-        while not reachable:
-            if time.time() - start > 2.0:
-                print("Timeout : Could not find a reachable target pose. Reverting to default")
-                if left:
-                    target_pose = fv_utils.rotateInSelf(orig_target_pose, [-45, 0, 0])
-                else:
-                    target_pose = fv_utils.rotateInSelf(orig_target_pose, [45, 0, 0])
-
-                reachable = self._is_pose_reachable(target_pose, left)
-                break
-
-            if left:
-                target_pose = fv_utils.rotateInSelf(target_pose, [-1.0, 0, 0])
-            else:
-                target_pose = fv_utils.rotateInSelf(target_pose, [1.0, 0, 0])
-
-            reachable = self._is_pose_reachable(target_pose, left)
-
-        if not reachable:
+        if reachable_target_pose is None:
             print("Could not find a reachable target pose. Aborting...")
             return False
 
-        lift_pose = target_pose.copy()
-        lift_pose[:3, 3] += np.array([0, 0, 0.1 + drop_height])
+        lift_pose = reachable_target_pose.copy()
+        lift_pose[:3, 3] += np.array([0, 0, 0.1])
+        reachable_lift_pose = find_close_reachable_pose(lift_pose, self._is_pose_reachable, left=left)
 
-        reachable = self._is_pose_reachable(lift_pose, left)
-
-        if not reachable:
+        if reachable_lift_pose is None:
             print("Could not find a reachable lift pose. Aborting...")
             return False
 
         print("Found reachable target and lift poses")
 
-        joint_lift_pose = arm.inverse_kinematics(lift_pose)
-        joint_target_pose = arm.inverse_kinematics(target_pose)
+        joint_lift_pose = arm.inverse_kinematics(reachable_lift_pose)
+        joint_target_pose = arm.inverse_kinematics(reachable_target_pose)
 
         goto(
             {joint: pos for joint, pos in zip(arm.joints.values(), joint_lift_pose)},
