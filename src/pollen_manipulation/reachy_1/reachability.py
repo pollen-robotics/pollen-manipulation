@@ -94,7 +94,7 @@ def is_pose_reachable(
     pose: npt.NDArray[np.float32],
     reachy: ReachySDK,
     angle_limits: List[float],
-    is_left_arm: bool = True,
+    is_left_arm: bool = False,
     precision_meters: float = 0.01,
     precision_rads: float = 0.09,
     ik_seed: Optional[List[float]] = None,
