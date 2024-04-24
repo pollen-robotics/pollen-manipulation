@@ -51,6 +51,9 @@ class Reachy1ManipulationAPI:
         grasp_success = self.execute_grasp(grasp_pose[0])
         return grasp_success
 
+    def _is_pose_reachable(self, pose: npt.NDArray[np.float32], left: bool = False) -> bool:
+        return is_pose_reachable(pose, self.reachy, self.angle_limits, left)
+
     def get_reachable_grasp_poses(
         self,
         rgb: npt.NDArray[np.uint8],
@@ -107,9 +110,8 @@ class Reachy1ManipulationAPI:
             pregrasp_pose = grasp_pose.copy()
             pregrasp_pose = fv_utils.translateInSelf(grasp_pose, [0, 0, 0.1])
 
-            pregrasp_pose_reachable = is_pose_reachable(pregrasp_pose, self.reachy, self.angle_limits, left)
-
-            grasp_pose_reachable = is_pose_reachable(grasp_pose, self.reachy, self.angle_limits, left)
+            pregrasp_pose_reachable = self._is_pose_reachable(pregrasp_pose, left)
+            grasp_pose_reachable = self._is_pose_reachable(grasp_pose, left)
 
             if pregrasp_pose_reachable and grasp_pose_reachable:
                 reachable_grasp_poses.append(grasp_pose)
@@ -175,11 +177,12 @@ class Reachy1ManipulationAPI:
             arm = self.reachy.r_arm
 
         target_pose[:3, :3] = self.right_start_pose[:3, :3]
-        target_pose[:3, 3] += np.array([0, 0, 0.05 + drop_height])  # 0.05 to compensate the gravity
+        target_pose[:3, 3] += np.array([0, 0, 0.05])  # 0.05 to compensate the gravity
 
         # Looking for a reachable target pose
         orig_target_pose = target_pose.copy()
-        reachable = is_pose_reachable(target_pose, self.reachy, self.angle_limits, left)
+        reachable = self._is_pose_reachable(target_pose, left)
+
         start = time.time()
         while not reachable:
             if time.time() - start > 2.0:
@@ -188,34 +191,52 @@ class Reachy1ManipulationAPI:
                     target_pose = fv_utils.rotateInSelf(orig_target_pose, [-45, 0, 0])
                 else:
                     target_pose = fv_utils.rotateInSelf(orig_target_pose, [45, 0, 0])
+
+                reachable = self._is_pose_reachable(target_pose, left)
                 break
 
             if left:
-                target_pose = fv_utils.rotateInSelf(target_pose, [-0.1, 0, 0])
+                target_pose = fv_utils.rotateInSelf(target_pose, [-1.0, 0, 0])
             else:
-                target_pose = fv_utils.rotateInSelf(target_pose, [0.1, 0, 0])
-            reachable = is_pose_reachable(target_pose, self.reachy, self.angle_limits, left)
+                target_pose = fv_utils.rotateInSelf(target_pose, [1.0, 0, 0])
 
-        if reachable:
-            print("Found a reachable target pose!")
+            reachable = self._is_pose_reachable(target_pose, left)
 
+        if not reachable:
+            print("Could not find a reachable target pose. Aborting...")
+            return False
+
+        lift_pose = target_pose.copy()
+        lift_pose[:3, 3] += np.array([0, 0, 0.1 + drop_height])
+
+        reachable = self._is_pose_reachable(lift_pose, left)
+
+        if not reachable:
+            print("Could not find a reachable lift pose. Aborting...")
+            return False
+
+        print("Found reachable target and lift poses")
+
+        joint_lift_pose = arm.inverse_kinematics(lift_pose)
         joint_target_pose = arm.inverse_kinematics(target_pose)
 
         goto(
-            {joint: pos for joint, pos in zip(arm.joints.values(), joint_target_pose)},
+            {joint: pos for joint, pos in zip(arm.joints.values(), joint_lift_pose)},
             duration=4.0,
+            interpolation_mode=InterpolationMode.MINIMUM_JERK,
+        )
+
+        goto(
+            {joint: pos for joint, pos in zip(arm.joints.values(), joint_target_pose)},
+            duration=2.0,
             interpolation_mode=InterpolationMode.MINIMUM_JERK,
         )
 
         self.open_gripper(left=left)
 
-        lift_pose = target_pose.copy()
-        lift_pose[:3, 3] += np.array([0, 0, 0.1])
-        joint_lift_pose = arm.inverse_kinematics(lift_pose)
-
         goto(
             {joint: pos for joint, pos in zip(arm.joints.values(), joint_lift_pose)},
-            duration=4.0,
+            duration=2.0,
             interpolation_mode=InterpolationMode.MINIMUM_JERK,
         )
 
