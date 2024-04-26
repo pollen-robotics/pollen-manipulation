@@ -1,4 +1,5 @@
 import time
+from threading import Thread
 from typing import Any, Dict, List, Tuple
 
 import cv2
@@ -33,6 +34,40 @@ class Reachy1ManipulationAPI:
 
         self.grasp_net = ContactGraspNetWrapper()
 
+        self._grasp_fail_checking_thread = Thread(target=self._grasp_fail_checking)
+        self._start_thread()
+
+    def _start_thread(self) -> None:
+        self._running = True
+        self._check_grasp_fail = False
+        self._failed_grasp = False
+        self._grasp_fail_checking_thread.start()
+
+    def _stop_thread(self) -> None:
+        self._running = False
+        self._grasp_fail_check = False
+        self._failed_grasp = False
+        self._grasp_fail_checking_thread.join()
+
+    def _grasp_fail_checking(self) -> None:
+        print("Grasp fail checking thread started")
+        while self._running:
+            if self._check_grasp_fail:
+                gripper_pos = self.reachy.r_arm.r_gripper.present_position
+                if gripper_pos > 15.0:
+                    print("Grasp failed")
+                    self._failed_grasp = True
+                    self._check_grasp_fail = False
+
+            time.sleep(0.1)
+
+    def check_grasp_fail(self, left: bool) -> bool:
+        if self._failed_grasp:
+            print("Grasp failed. Aborting...")
+            self.goto_rest_position(left=left)
+            return False
+        return True
+
     def grasp_object(self, object_info: Dict[str, Any], left: bool = False) -> bool:
         position = object_info["position"]
         rgb = object_info["rgb"]
@@ -52,7 +87,8 @@ class Reachy1ManipulationAPI:
         return grasp_success
 
     def _is_pose_reachable(self, pose: npt.NDArray[np.float32], left: bool = False) -> bool:
-        return is_pose_reachable(pose, self.reachy, self.angle_limits, left)
+        is_reachable: bool = is_pose_reachable(pose, self.reachy, self.angle_limits, left)
+        return is_reachable
 
     def get_reachable_grasp_poses(
         self,
@@ -97,8 +133,9 @@ class Reachy1ManipulationAPI:
 
         # Re sorting because we added new grasp poses at the end of the array
         if len(all_grasp_poses) > 0:
-            all_scores, all_grasp_poses = zip(*sorted(zip(all_scores, all_grasp_poses), reverse=True, key=lambda x: x[0]))  # type: ignore
-
+            zipped = zip(all_scores, all_grasp_poses)
+            sorted_zipped = sorted(zipped, reverse=True, key=lambda x: x[0])
+            all_scores, all_grasp_poses = zip(*sorted_zipped)  # type: ignore
         print("SCORES: ", all_scores)
 
         reachable_grasp_poses = []
@@ -153,6 +190,9 @@ class Reachy1ManipulationAPI:
         )
         self.close_gripper(left=left)
 
+        if self.check_grasp_fail(left=left) is False:
+            return False
+
         lift_pose = grasp_pose.copy()
         lift_pose[:3, 3] += np.array([0, 0, 0.3])
         joint_lift_pose = arm.inverse_kinematics(lift_pose)
@@ -162,6 +202,9 @@ class Reachy1ManipulationAPI:
             interpolation_mode=InterpolationMode.MINIMUM_JERK,
         )
 
+        if self.check_grasp_fail(left=left) is False:
+            return False
+
         return True
 
     def drop_object(self, target_pose: npt.NDArray[np.float32], left: bool = False) -> None:
@@ -169,6 +212,9 @@ class Reachy1ManipulationAPI:
         self.place_object(target_pose, drop_height=0.2)
 
     def place_object(self, target_pose: npt.NDArray[np.float32], drop_height: float = 0.0, left: bool = False) -> bool:
+        if self.check_grasp_fail(left=left) is False:
+            return False
+
         target_pose = np.array(target_pose)
 
         if left:
@@ -198,11 +244,17 @@ class Reachy1ManipulationAPI:
         joint_lift_pose = arm.inverse_kinematics(reachable_lift_pose)
         joint_target_pose = arm.inverse_kinematics(reachable_target_pose)
 
+        if self.check_grasp_fail(left=left) is False:
+            return False
+
         goto(
             {joint: pos for joint, pos in zip(arm.joints.values(), joint_lift_pose)},
             duration=4.0,
             interpolation_mode=InterpolationMode.MINIMUM_JERK,
         )
+
+        if self.check_grasp_fail(left=left) is False:
+            return False
 
         goto(
             {joint: pos for joint, pos in zip(arm.joints.values(), joint_target_pose)},
@@ -246,17 +298,27 @@ class Reachy1ManipulationAPI:
         else:
             goto({self.reachy.r_arm.r_gripper: -50}, duration=1.0)
 
+        self._check_grasp_fail = False
+        self._failed_grasp = False
+
     def close_gripper(self, left: bool = False) -> None:
         if left:
             goto({self.reachy.l_arm.l_gripper: -50}, duration=1.0)
         else:
             goto({self.reachy.r_arm.r_gripper: 20}, duration=1.0)
 
+        self._check_grasp_fail = True
+        self._failed_grasp = False
+
     def turn_robot_on(self) -> None:
         self.reachy.turn_on("r_arm")
 
+        if self._running is False:
+            self._start_thread()
+
     def stop(self) -> None:
         print("Stopping the robot...")
+        self._stop_thread()
         self.reachy.turn_off_smoothly("reachy", duration=3)
         time.sleep(1)
         exit()
