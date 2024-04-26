@@ -133,7 +133,9 @@ class Reachy1ManipulationAPI:
 
         # Re sorting because we added new grasp poses at the end of the array
         if len(all_grasp_poses) > 0:
-            all_scores, all_grasp_poses = zip(*sorted(zip(all_scores, all_grasp_poses), reverse=True, key=lambda x: x[0]))  # type: ignore
+            zipped = zip(all_scores, all_grasp_poses)
+            sorted_zipped = sorted(zipped, reverse=True, key=lambda x: x[0])
+            all_scores, all_grasp_poses = zip(*sorted_zipped)  # type: ignore
         print("SCORES: ", all_scores)
 
         reachable_grasp_poses = []
