@@ -1,4 +1,3 @@
-from sys import exit
 from threading import Thread
 import time
 from typing import Any, Dict, List, Tuple
@@ -88,7 +87,8 @@ class Reachy1ManipulationAPI:
         return grasp_success
 
     def _is_pose_reachable(self, pose: npt.NDArray[np.float32], left: bool = False) -> bool:
-        return is_pose_reachable(pose, self.reachy, self.angle_limits, left)
+        is_reachable: bool = is_pose_reachable(pose, self.reachy, self.angle_limits, left)
+        return is_reachable
 
     def get_reachable_grasp_poses(
         self,
@@ -134,7 +134,6 @@ class Reachy1ManipulationAPI:
         # Re sorting because we added new grasp poses at the end of the array
         if len(all_grasp_poses) > 0:
             all_scores, all_grasp_poses = zip(*sorted(zip(all_scores, all_grasp_poses), reverse=True, key=lambda x: x[0]))  # type: ignore
-
         print("SCORES: ", all_scores)
 
         reachable_grasp_poses = []
@@ -319,6 +318,5 @@ class Reachy1ManipulationAPI:
         print("Stopping the robot...")
         self._stop_thread()
         self.reachy.turn_off_smoothly("reachy", duration=3)
-        time.sleep(2)
-
-        # exit()
+        time.sleep(1)
+        exit()
