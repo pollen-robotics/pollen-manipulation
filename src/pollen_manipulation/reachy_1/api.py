@@ -54,7 +54,7 @@ class Reachy1ManipulationAPI:
         while self._running:
             if self._check_grasp_fail:
                 gripper_pos = self.reachy.r_arm.r_gripper.present_position
-                if gripper_pos > 15.0:
+                if gripper_pos > 16.5:
                     print("Grasp failed")
                     self._failed_grasp = True
                     self._check_grasp_fail = False
