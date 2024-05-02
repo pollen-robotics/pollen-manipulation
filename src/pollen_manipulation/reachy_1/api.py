@@ -51,8 +51,9 @@ class Reachy1ManipulationAPI:
         print("Grasp fail checking thread started")
         while self._check_grasp_fail:
             gripper_pos = self.reachy.r_arm.r_gripper.present_position
-            if gripper_pos > 15.5:
+            if gripper_pos > 16.8:
                 self._failed_grasp = True
+                print(f"Grasp failed. Gripper position: {gripper_pos}")
             else:
                 self._failed_grasp = False
             time.sleep(0.1)
@@ -185,6 +186,7 @@ class Reachy1ManipulationAPI:
             interpolation_mode=InterpolationMode.MINIMUM_JERK,
         )
         self.close_gripper(left=left)
+        time.sleep(1.0)
 
         print("Checking grasp fail after closing gripper...")
 
@@ -200,6 +202,8 @@ class Reachy1ManipulationAPI:
             duration=duration,
             interpolation_mode=InterpolationMode.MINIMUM_JERK,
         )
+
+        time.sleep(0.5)
 
         print("Checking grasp fail after lifting object...")
 
@@ -217,6 +221,7 @@ class Reachy1ManipulationAPI:
 
     def place_object(self, target_pose: npt.NDArray[np.float32], drop_height: float = 0.0, left: bool = False) -> bool:
         if self.check_grasp_fail(left=left) is False:
+            self.goto_rest_position(left=left, open_gripper=True)
             return False
 
         target_pose = np.array(target_pose)
@@ -248,17 +253,11 @@ class Reachy1ManipulationAPI:
         joint_lift_pose = arm.inverse_kinematics(reachable_lift_pose)
         joint_target_pose = arm.inverse_kinematics(reachable_target_pose)
 
-        if self.check_grasp_fail(left=left) is False:
-            return False
-
         goto(
             {joint: pos for joint, pos in zip(arm.joints.values(), joint_lift_pose)},
             duration=4.0,
             interpolation_mode=InterpolationMode.MINIMUM_JERK,
         )
-
-        if self.check_grasp_fail(left=left) is False:
-            return False
 
         goto(
             {joint: pos for joint, pos in zip(arm.joints.values(), joint_target_pose)},
@@ -312,6 +311,7 @@ class Reachy1ManipulationAPI:
         time.sleep(0.5)
 
     def turn_robot_on(self) -> None:
+        self._check_grasp_fail = True
         self.reachy.turn_on("r_arm")
 
     def stop(self) -> None:
