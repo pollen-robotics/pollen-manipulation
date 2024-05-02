@@ -25,8 +25,8 @@ class Reachy1ManipulationAPI:
         self.T_world_cam = T_world_cam
         self.K_cam_left = K_cam_left
 
-        self.right_start_pose = fv_utils.make_pose([0.20, -0.24, -0.28], [0, -90, 0])
-        self.left_start_pose = fv_utils.make_pose([0.20, 0.24, -0.28], [0, -90, 0])
+        self.right_start_pose = fv_utils.make_pose([0.20, -0.24, -0.23], [0, -90, 0])
+        self.left_start_pose = fv_utils.make_pose([0.20, 0.24, -0.23], [0, -90, 0])
         self.right_joint_start_pose = self.reachy.r_arm.inverse_kinematics(self.right_start_pose)
         self.left_joint_start_pose = self.reachy.l_arm.inverse_kinematics(self.left_start_pose)
 
@@ -36,36 +36,32 @@ class Reachy1ManipulationAPI:
 
         self._grasp_fail_checking_thread = Thread(target=self._grasp_fail_checking)
         self._start_thread()
-
-    def _start_thread(self) -> None:
-        self._running = True
-        self._check_grasp_fail = False
-        self._failed_grasp = False
         self._grasp_fail_checking_thread.start()
 
+    def _start_thread(self) -> None:
+        self._check_grasp_fail = True
+        self._failed_grasp = False
+
     def _stop_thread(self) -> None:
-        self._running = False
-        self._grasp_fail_check = False
+        self._check_grasp_fail = False
         self._failed_grasp = False
         self._grasp_fail_checking_thread.join()
 
     def _grasp_fail_checking(self) -> None:
         print("Grasp fail checking thread started")
-        while self._running:
-            if self._check_grasp_fail:
-                gripper_pos = self.reachy.r_arm.r_gripper.present_position
-                if gripper_pos > 16.5:
-                    print("Grasp failed")
-                    self._failed_grasp = True
-                    self._check_grasp_fail = False
-
+        while self._check_grasp_fail:
+            gripper_pos = self.reachy.r_arm.r_gripper.present_position
+            if gripper_pos > 15.5:
+                self._failed_grasp = True
+            else:
+                self._failed_grasp = False
             time.sleep(0.1)
 
     def check_grasp_fail(self, left: bool) -> bool:
         if self._failed_grasp:
             print("Grasp failed. Aborting...")
-            self.goto_rest_position(left=left)
             return False
+        print("Grasp seems successful")
         return True
 
     def grasp_object(self, object_info: Dict[str, Any], left: bool = False) -> bool:
@@ -190,11 +186,14 @@ class Reachy1ManipulationAPI:
         )
         self.close_gripper(left=left)
 
+        print("Checking grasp fail after closing gripper...")
+
         if self.check_grasp_fail(left=left) is False:
+            self.goto_rest_position(left=left, open_gripper=True)
             return False
 
         lift_pose = grasp_pose.copy()
-        lift_pose[:3, 3] += np.array([0, 0, 0.3])
+        lift_pose[:3, 3] += np.array([0, 0, 0.25])
         joint_lift_pose = arm.inverse_kinematics(lift_pose)
         goto(
             {joint: pos for joint, pos in zip(arm.joints.values(), joint_lift_pose)},
@@ -202,8 +201,13 @@ class Reachy1ManipulationAPI:
             interpolation_mode=InterpolationMode.MINIMUM_JERK,
         )
 
+        print("Checking grasp fail after lifting object...")
+
         if self.check_grasp_fail(left=left) is False:
+            self.goto_rest_position(left=left, open_gripper=True)
             return False
+
+        self.goto_rest_position(left=left, open_gripper=False)
 
         return True
 
@@ -272,7 +276,7 @@ class Reachy1ManipulationAPI:
 
         return True
 
-    def goto_rest_position(self, left: bool = False) -> None:
+    def goto_rest_position(self, left: bool = False, open_gripper: bool = True) -> None:
         if not left:
             goto(
                 goal_positions={
@@ -281,7 +285,8 @@ class Reachy1ManipulationAPI:
                 duration=4.0,
                 interpolation_mode=InterpolationMode.MINIMUM_JERK,
             )
-            self.open_gripper(left=False)
+            if open_gripper:
+                self.open_gripper(left=False)
         if left:
             goto(
                 goal_positions={
@@ -290,7 +295,8 @@ class Reachy1ManipulationAPI:
                 duration=4.0,
                 interpolation_mode=InterpolationMode.MINIMUM_JERK,
             )
-            self.open_gripper(left=True)
+            if open_gripper:
+                self.open_gripper(left=True)
 
     def open_gripper(self, left: bool = False) -> None:
         if left:
@@ -298,27 +304,19 @@ class Reachy1ManipulationAPI:
         else:
             goto({self.reachy.r_arm.r_gripper: -50}, duration=1.0)
 
-        self._check_grasp_fail = False
-        self._failed_grasp = False
-
     def close_gripper(self, left: bool = False) -> None:
         if left:
             goto({self.reachy.l_arm.l_gripper: -50}, duration=1.0)
         else:
             goto({self.reachy.r_arm.r_gripper: 20}, duration=1.0)
-
-        self._check_grasp_fail = True
-        self._failed_grasp = False
+        time.sleep(0.5)
 
     def turn_robot_on(self) -> None:
         self.reachy.turn_on("r_arm")
-
-        if self._running is False:
-            self._start_thread()
 
     def stop(self) -> None:
         print("Stopping the robot...")
         self._stop_thread()
         self.reachy.turn_off_smoothly("reachy", duration=3)
         time.sleep(1)
-        exit()
+        # exit()
