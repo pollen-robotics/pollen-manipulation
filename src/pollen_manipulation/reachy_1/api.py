@@ -65,16 +65,16 @@ class Reachy1ManipulationAPI:
         print("Grasp seems successful")
         return True
 
-    def grasp_object(self, object_info: Dict[str, Any], left: bool = False) -> bool:
-        position = object_info["position"]
+    def grasp_object(self, object_info: Dict[str, Any], left: bool = False, visualize=False) -> bool:
+        pose = object_info["pose"]
         rgb = object_info["rgb"]
         mask = object_info["mask"]
         depth = object_info["depth"]
 
-        if len(position) == 0:
+        if len(pose) == 0:
             return False
 
-        grasp_pose, _ = self.get_reachable_grasp_poses(rgb, depth, mask)
+        grasp_pose, _ = self.get_reachable_grasp_poses(rgb, depth, mask, visualize=visualize)
         if len(grasp_pose) == 0:
             return False
 
