@@ -211,7 +211,7 @@ class Reachy1ManipulationAPI:
             self.goto_rest_position(left=left, open_gripper=True)
             return False
 
-        self.goto_rest_position(left=left, open_gripper=False)
+        # self.goto_rest_position(left=left, open_gripper=False)
 
         return True
 
@@ -307,7 +307,7 @@ class Reachy1ManipulationAPI:
         if left:
             goto({self.reachy.l_arm.l_gripper: -50}, duration=1.0)
         else:
-            goto({self.reachy.r_arm.r_gripper: 20}, duration=1.0)
+            goto({self.reachy.r_arm.r_gripper: 30}, duration=1.0)
         time.sleep(0.5)
 
     def turn_robot_on(self) -> None:
