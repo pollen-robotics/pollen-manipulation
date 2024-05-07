@@ -14,7 +14,6 @@ T_world_cam = fv_utils.make_pose([0.03, -0.15, 0.1], [0, 0, 0])
 T_world_cam[:3, :3] = np.array([[0, 0, 1], [-1, 0, 0], [0, -1, 0]])
 T_world_cam = fv_utils.rotateInSelf(T_world_cam, [-45, 0, 0])
 
-# Perception module
 cam = SDKWrapper(get_config_file_path("CONFIG_SR"), compute_depth=True)
 
 depth_anything = DepthAnythingWrapper()
@@ -39,14 +38,14 @@ while True:
         pcl_vis.update(cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB), mono_depth)
         cv2.imshow("mono_depth", mono_depth)
 
-        # data = {
-        #     "rgb": rgb,
-        #     "depth": depth,
-        #     "mono_depth": mono_depth,
-        #     "K": cam.get_K()
-        # }
-        # pickle.dump(data, open("data.pkl", "wb"))
-        # exit()
+        print("Saving data.pkl")
+        data = {
+            "rgb": rgb,
+            "depth": depth,
+            "mono_depth": mono_depth,
+            "K": cam.get_K()
+        }
+        pickle.dump(data, open("data.pkl", "wb"))
 
     pcl_vis.tick()
 
