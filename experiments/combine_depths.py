@@ -1,10 +1,15 @@
+import argparse
 import pickle
 import time
 
 import cv2
 from pcl_visualizer import PCLVisualizer
 
-data = pickle.load(open("data.pkl", "rb"))
+parser = argparse.ArgumentParser()
+parser.add_argument('-d', "--data", type=str, default="data.pkl")
+args = parser.parse_args()
+
+data = pickle.load(open(args.data, "rb"))
 
 rgb = data["rgb"]
 depth = data["depth"]
