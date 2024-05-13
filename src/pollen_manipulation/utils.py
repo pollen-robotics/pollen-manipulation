@@ -61,6 +61,5 @@ def find_close_reachable_pose(
         reachable = reachability_function(pose, left)
         if reachable:
             return pose
-        print("Theta_x", theta_x, "not reachable")
 
     return None
