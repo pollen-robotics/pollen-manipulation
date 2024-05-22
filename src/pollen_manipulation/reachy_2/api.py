@@ -16,8 +16,8 @@ from pollen_manipulation.utils import normalize_pose
 
 
 class Reachy2ManipulationAPI:
-    def __init__(self, reachy_ip: str, T_world_cam: npt.NDArray[np.float32], K_cam_left: npt.NDArray[np.float32]):
-        self.reachy = ReachySDK(reachy_ip)
+    def __init__(self, reachy: ReachySDK, T_world_cam: npt.NDArray[np.float32], K_cam_left: npt.NDArray[np.float32]):
+        self.reachy = reachy
 
         self.T_world_cam = T_world_cam
         self.K_cam_left = K_cam_left
