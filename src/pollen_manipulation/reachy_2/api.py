@@ -119,10 +119,14 @@ class Reachy2ManipulationAPI:
             pregrasp_pose = grasp_pose.copy()
             pregrasp_pose = fv_utils.translateInSelf(grasp_pose, [0, 0, 0.1])
 
+            lift_pose = grasp_pose.copy()
+            lift_pose[:3, 3] += np.array([0, 0, 0.20])
+
             pregrasp_pose_reachable = self._is_pose_reachable(pregrasp_pose, left)
             grasp_pose_reachable = self._is_pose_reachable(grasp_pose, left)
+            lift_pose_reachable = self._is_pose_reachable(lift_pose, left)
 
-            if pregrasp_pose_reachable and grasp_pose_reachable:
+            if pregrasp_pose_reachable and grasp_pose_reachable and lift_pose_reachable:
                 reachable_grasp_poses.append(grasp_pose)
                 reachable_scores.append(all_scores[i])
 
@@ -144,17 +148,17 @@ class Reachy2ManipulationAPI:
             arm = self.reachy.r_arm
 
         # print("Opening gripper")
-        # self.open_gripper(left=left)
+        self.open_gripper(left=left)
 
         # print("Going to pregrasp pose")
-        # goto_id = arm.goto_from_matrix(target=pregrasp_pose, duration=duration)
+        goto_id = arm.goto_from_matrix(target=pregrasp_pose, duration=duration)
         # print("GOTO ID: ", goto_id)
 
-        # if goto_id.id == -1:
-        #     return pregrasp_pose, grasp_pose
+        if goto_id.id == -1:
+            return False
 
-        # while not self.reachy.is_move_finished(goto_id):
-        #     time.sleep(0.1)
+        while not self.reachy.is_move_finished(goto_id):
+            time.sleep(0.1)
 
         # return pregrasp_pose, grasp_pose
 
@@ -163,19 +167,25 @@ class Reachy2ManipulationAPI:
 
         if goto_id.id == -1:
             print("Goto ID is -1")
-            return grasp_pose
+            return False
 
         while not self.reachy.is_move_finished(goto_id):
             time.sleep(0.1)
 
-        return pregrasp_pose, grasp_pose
+        # return pregrasp_pose, grasp_pose
 
-        # print("Closing gripper")
-        # self.close_gripper(left=left)
+        print("Closing gripper")
+        self.close_gripper(left=left)
 
-        # lift_pose = grasp_pose.copy()
-        # lift_pose[:3, 3] += np.array([0, 0, 0.25])
-        # arm.goto_from_matrix(target=lift_pose, duration=duration)
+        lift_pose = grasp_pose.copy()
+        lift_pose[:3, 3] += np.array([0, 0, 0.20])
+        goto_id = arm.goto_from_matrix(target=lift_pose, duration=duration)
+        if goto_id.id == -1:
+            print("Goto ID is -1")
+            return False
+
+        while not self.reachy.is_move_finished(goto_id):
+            time.sleep(0.1)
 
         return True
 
