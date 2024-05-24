@@ -22,21 +22,6 @@ class Reachy2ManipulationAPI:
         self.T_world_cam = T_world_cam
         self.K_cam_left = K_cam_left
 
-        self.symbolic_ik_left = SymbolicIK(
-            arm="l_arm",
-            upper_arm_size=0.28,
-            forearm_size=0.28,
-            gripper_size=0.10,
-            wrist_limit=45,
-        )
-        self.symbolic_ik_right = SymbolicIK(
-            arm="r_arm",
-            upper_arm_size=0.28,
-            forearm_size=0.28,
-            gripper_size=0.10,
-            wrist_limit=45,
-        )
-
         self.right_start_pose = fv_utils.make_pose([0.20, -0.24, -0.23], [0, -90, 0])
         self.left_start_pose = fv_utils.make_pose([0.20, 0.24, -0.23], [0, -90, 0])
 
@@ -73,38 +58,14 @@ class Reachy2ManipulationAPI:
         return position, euler_angles
 
     def _is_pose_reachable(self, pose: npt.NDArray[np.float32], left: bool = False) -> bool:
-        # return True
-        symbolic_pose = self._get_euler_from_homogeneous_matrix(pose)
         if left:
-            symbolic_ik = self.symbolic_ik_left
-            arm_name = "l_arm"
             arm = self.reachy.l_arm
-            prefered_theta = -np.pi + 4 * np.pi / 6
         else:
-            symbolic_ik = self.symbolic_ik_right
-            arm_name = "r_arm"
             arm = self.reachy.r_arm
-            prefered_theta = -4 * np.pi / 6
 
-        reachable_result: Tuple[bool, npt.NDArray[np.float64], Optional[Any]] = symbolic_ik.is_reachable(symbolic_pose)
-        is_reachable, interval, theta_to_joints_func = reachable_result
-        # return is_reachable
-
-        if is_reachable:
-            best_theta_result = get_best_discrete_theta_min_mouvement(
-                previous_theta=-4 * np.pi / 6,
-                interval=interval,
-                get_joints=theta_to_joints_func,
-                nb_search_points=20,  # taking 20 as in PollenKdlKinematics class
-                prefered_theta=prefered_theta,  # taking -4 * np.pi / 6 as in PollenKdlKinematics class
-                arm=arm_name,
-                current_joints=np.deg2rad(arm.get_joints_positions()),
-            )
-            is_reachable_with_theta: bool = best_theta_result[0]
-        else:
-            is_reachable_with_theta = False
-
-        return is_reachable_with_theta
+        reachability: bool = False
+        reachability, _ = arm.inverse_kinematics(pose, ignore_raise_on_failure=True)
+        return reachability
 
     def get_reachable_grasp_poses(
         self,
