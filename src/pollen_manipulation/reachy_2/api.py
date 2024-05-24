@@ -103,11 +103,6 @@ class Reachy2ManipulationAPI:
                 all_grasp_poses.append(T_world_graspPose)
                 all_scores.append(scores[obj_id][i])
 
-        # add the same poses but rotated 180° around z
-        for i in range(len(all_grasp_poses)):
-            all_grasp_poses.append(fv_utils.rotateInSelf(all_grasp_poses[i], [0, 0, 180]))
-            all_scores.append(all_scores[i])
-
         # Re sorting because we added new grasp poses at the end of the array
         if len(all_grasp_poses) > 0:
             zipped = zip(all_scores, all_grasp_poses)
