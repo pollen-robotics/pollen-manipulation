@@ -10,7 +10,6 @@ import FramesViewer.utils as fv_utils
 
 from reachy2_sdk import ReachySDK
 from reachy2_symbolic_ik.symbolic_ik import SymbolicIK
-from reachy2_symbolic_ik.utils import get_best_discrete_theta_min_mouvement
 
 from pollen_manipulation.utils import normalize_pose
 
@@ -63,9 +62,11 @@ class Reachy2ManipulationAPI:
         else:
             arm = self.reachy.r_arm
 
-        reachability: bool = False
-        reachability, _ = arm.inverse_kinematics(pose, ignore_raise_on_failure=True)
-        return reachability
+        try:
+            arm.inverse_kinematics(pose)
+        except ValueError:
+            return False
+        return True
 
     def get_reachable_grasp_poses(
         self,
