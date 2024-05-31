@@ -99,7 +99,7 @@ class Reachy2ManipulationAPI:
                 T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [0, 0, 90])
                 T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [180, 0, 0])
                 T_world_graspPose = fv_utils.translateInSelf(
-                    T_world_graspPose, [0, 0, -0.13]
+                    T_world_graspPose, [0, 0, -0.0584]
                 )  # origin of grasp pose is between fingers for reachy. Value was eyballed
                 all_grasp_poses.append(T_world_graspPose)
                 all_scores.append(scores[obj_id][i])
