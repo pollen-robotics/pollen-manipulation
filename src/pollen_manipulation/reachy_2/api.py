@@ -68,6 +68,7 @@ class Reachy2ManipulationAPI:
             return False
         return True
 
+
     def get_reachable_grasp_poses(
         self,
         rgb: npt.NDArray[np.uint8],
@@ -81,7 +82,7 @@ class Reachy2ManipulationAPI:
         depth = depth.astype(np.float32)
         mask = mask.astype(np.uint8)
 
-        grasp_poses, scores, contact_pts, pc_full, pc_colors = self.grasp_net.infer(mask, rgb, depth * 0.001, self.K_cam_left)
+        grasp_poses, scores, contact_pts, openings, pc_full, pc_colors = self.grasp_net.infer(mask, rgb, depth * 0.001, self.K_cam_left)
 
         if visualize:
             self.grasp_net.visualize(rgb, mask, pc_full, grasp_poses, scores, pc_colors)
@@ -92,15 +93,24 @@ class Reachy2ManipulationAPI:
             for i, T_cam_graspPose in enumerate(grasp_poses):
                 T_cam_graspPose = normalize_pose(T_cam_graspPose)  # output rotation matrices of network are not normalized
 
-                # set to world frame
+                # set the pose from camera frame to world frame
                 T_world_graspPose = self.T_world_cam @ T_cam_graspPose
 
                 # Set to reachy's gripper frame
                 T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [0, 0, 90])
                 T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [180, 0, 0])
+                # T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [0, -90, 0])
+
+
+                # T_world_graspPose = fv_utils.translateInSelf(
+                #     T_world_graspPose, [0, 0, -0.13]
+                # )  # origin of grasp pose is between fingers for reachy. Value was eyballed
+
                 T_world_graspPose = fv_utils.translateInSelf(
-                    T_world_graspPose, [0, 0, -0.13]
-                )  # origin of grasp pose is between fingers for reachy. Value was eyballed
+                    T_world_graspPose, [0, 0, -0.0584]
+                )  # Graspnet returns the base of the gripper mesh, we translate to get the base of the opening
+
+
                 all_grasp_poses.append(T_world_graspPose)
                 all_scores.append(scores[obj_id][i])
 
@@ -112,6 +122,7 @@ class Reachy2ManipulationAPI:
 
         reachable_grasp_poses = []
         reachable_scores = []
+
         print(f"Number of grasp poses: {len(all_grasp_poses)}")
         for i, grasp_pose in enumerate(all_grasp_poses):
             # For a grasp pose to be reachable, its pregrasp pose must be reachable too
@@ -126,13 +137,19 @@ class Reachy2ManipulationAPI:
             pregrasp_pose_reachable = self._is_pose_reachable(pregrasp_pose, left)
             grasp_pose_reachable = self._is_pose_reachable(grasp_pose, left)
             lift_pose_reachable = self._is_pose_reachable(lift_pose, left)
+            if not pregrasp_pose_reachable:
+                print(f"\t pregrasp not reachable")
+            if not grasp_pose_reachable:
+                print(f"\t grasp not reachable")
+            if not lift_pose_reachable:
+                print(f"\t lift not reachable")
 
             if pregrasp_pose_reachable and grasp_pose_reachable and lift_pose_reachable:
                 reachable_grasp_poses.append(grasp_pose)
                 reachable_scores.append(all_scores[i])
 
         print(f"Number of reachable grasp poses: {len(reachable_grasp_poses)}")
-        return reachable_grasp_poses, reachable_scores
+        return reachable_grasp_poses, reachable_scores, all_grasp_poses, all_scores
 
     def execute_grasp(self, grasp_pose: npt.NDArray[np.float32], duration: float, left: bool = False) -> bool:
         print("Executing grasp")
