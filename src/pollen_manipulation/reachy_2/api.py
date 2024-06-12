@@ -3,13 +3,12 @@ import numpy as np
 import numpy.typing as npt
 from scipy.spatial.transform import Rotation as R
 import time
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Dict, List, Tuple, Any
 
 from contact_graspnet_pytorch.wrapper import ContactGraspNetWrapper
 import FramesViewer.utils as fv_utils
 
 from reachy2_sdk import ReachySDK
-from reachy2_symbolic_ik.symbolic_ik import SymbolicIK
 
 from pollen_manipulation.utils import normalize_pose
 
@@ -37,13 +36,12 @@ class Reachy2ManipulationAPI:
         if len(pose) == 0:
             return False
 
-        grasp_pose, _ = self.get_reachable_grasp_poses(rgb, depth, mask, left=left)
+        grasp_pose, _ = self.get_reachable_grasp_poses(rgb, depth, mask, left=left, visualize=visualize)
 
         if len(grasp_pose) == 0:
             return False
 
-        print("OBJECT POSE: ", pose)
-        print("GRASP POSE: ", grasp_pose[0])
+        print("GRASP POSE selected: ", grasp_pose[0])
 
         grasp_success = self.execute_grasp(grasp_pose[0], left=left, duration=grasp_gotos_duration)
         return grasp_success
@@ -122,8 +120,7 @@ class Reachy2ManipulationAPI:
 
         reachable_grasp_poses = []
         reachable_scores = []
-
-        print(f"Number of grasp poses: {len(all_grasp_poses)}")
+        print(f"Number of grasp poses generated: {len(all_grasp_poses)}")
         for i, grasp_pose in enumerate(all_grasp_poses):
             # For a grasp pose to be reachable, its pregrasp pose must be reachable too
             # Pregrasp pose is defined as the pose 10cm behind the grasp pose along the z axis of the gripper
@@ -153,7 +150,6 @@ class Reachy2ManipulationAPI:
 
     def execute_grasp(self, grasp_pose: npt.NDArray[np.float32], duration: float, left: bool = False) -> bool:
         print("Executing grasp")
-        # print(f"Symbolic value of grasp pose: {self._pose_4x4_to_symbolic_pose(grasp_pose)}")
         pregrasp_pose = grasp_pose.copy()
         pregrasp_pose = fv_utils.translateInSelf(pregrasp_pose, [0, 0, 0.1])
 
@@ -165,22 +161,16 @@ class Reachy2ManipulationAPI:
         else:
             arm = self.reachy.r_arm
 
-        # print("Opening gripper")
         self.open_gripper(left=left)
-
-        # print("Going to pregrasp pose")
         goto_id = arm.goto_from_matrix(target=pregrasp_pose, duration=duration)
-        # print("GOTO ID: ", goto_id)
 
         if goto_id.id == -1:
+            print("Goto ID is -1")
             return False
 
         while not self.reachy.is_move_finished(goto_id):
             time.sleep(0.1)
 
-        # return pregrasp_pose, grasp_pose
-
-        print("Going to grasp pose")
         goto_id = arm.goto_from_matrix(target=grasp_pose, duration=duration)
 
         if goto_id.id == -1:
@@ -190,9 +180,6 @@ class Reachy2ManipulationAPI:
         while not self.reachy.is_move_finished(goto_id):
             time.sleep(0.1)
 
-        # return pregrasp_pose, grasp_pose
-
-        print("Closing gripper")
         self.close_gripper(left=left)
 
         lift_pose = grasp_pose.copy()
@@ -207,17 +194,19 @@ class Reachy2ManipulationAPI:
 
         return True
 
+    # TODO: Implement this method
     def drop_object(self) -> bool:
         return True
 
+    # TODO: Implement this method
     def place_object(self) -> bool:
         return True
 
-    def goto_rest_position(self, left: bool = False, open_gripper: bool = True) -> None:
+    def goto_rest_position(self, left: bool = False, open_gripper: bool = True, goto_duration: float = 4.0) -> None:
         if not left:
-            self.reachy.r_arm.goto_from_matrix(self.right_start_pose, duration=4.0)
+            self.reachy.r_arm.goto_from_matrix(self.right_start_pose, duration=goto_duration)
         else:
-            self.reachy.l_arm.goto_from_matrix(self.left_start_pose, duration=4.0)
+            self.reachy.l_arm.goto_from_matrix(self.left_start_pose, duration=goto_duration)
 
         if open_gripper:
             self.open_gripper(left=left)
