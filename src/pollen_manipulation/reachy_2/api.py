@@ -30,7 +30,12 @@ class Reachy2ManipulationAPI:
         self.grasp_net = ContactGraspNetWrapper()
 
     def grasp_object(
-        self, object_info: Dict[str, Any], left: bool = False, visualize: bool = False, grasp_gotos_duration: float = 4.0
+        self,
+        object_info: Dict[str, Any],
+        left: bool = False,
+        visualize: bool = False,
+        grasp_gotos_duration: float = 4.0,
+        use_cartesian_interpolation: bool = False,
     ) -> bool:
         pose = object_info["pose"]
         rgb = object_info["rgb"]
@@ -40,14 +45,19 @@ class Reachy2ManipulationAPI:
         if len(pose) == 0:
             return False
 
-        grasp_pose, _ = self.get_reachable_grasp_poses(rgb, depth, mask, left=left, visualize=visualize)
+        grasp_pose, _, _, _ = self.get_reachable_grasp_poses(rgb, depth, mask, left=left, visualize=visualize)
 
         if len(grasp_pose) == 0:
             return False
 
         print("GRASP POSE selected: ", grasp_pose[0])
 
-        grasp_success = self.execute_grasp(grasp_pose[0], left=left, duration=grasp_gotos_duration)
+        grasp_success = self.execute_grasp(
+            grasp_pose[0],
+            left=left,
+            duration=grasp_gotos_duration,
+            use_cartesian_interpolation=use_cartesian_interpolation
+        )
         return grasp_success
 
     def _get_euler_from_homogeneous_matrix(
@@ -78,7 +88,7 @@ class Reachy2ManipulationAPI:
         mask: npt.NDArray[np.uint8],
         left: bool = False,
         visualize: bool = False,
-    ) -> Tuple[List[npt.NDArray[np.float32]], List[np.float32]]:
+    ) -> Tuple[List[npt.NDArray[np.float32]], List[np.float32], List[npt.NDArray[np.float32]], List[np.float32]]:
         rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
         rgb = rgb.astype(np.uint8)
         depth = depth.astype(np.float32)
@@ -111,7 +121,7 @@ class Reachy2ManipulationAPI:
                     orientation_score/=np.abs(dist)
                 if yaw !=0.0:
                     orientation_score/=np.abs(yaw)
-                print(f'Angle dist: {dist} orientation_score: {orientation_score} yaw: {yaw} score: {scores[obj_id][i]}')
+                # print(f'Angle dist: {dist} orientation_score: {orientation_score} yaw: {yaw} score: {scores[obj_id][i]}')
 
                 # Set to reachy's gripper frame
                 T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [0, 0, 90])
@@ -145,7 +155,7 @@ class Reachy2ManipulationAPI:
                     orientation_score/=dist
                 if yaw !=0.0:
                     orientation_score/=np.abs(yaw)
-                print(f'Sym Angle dist: {dist} orientation_score: {orientation_score} yaw: {yaw} score: {scores[obj_id][i]}')
+                # print(f'Sym Angle dist: {dist} orientation_score: {orientation_score} yaw: {yaw} score: {scores[obj_id][i]}')
 
 
                 T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [0, 0, 90])
@@ -180,21 +190,28 @@ class Reachy2ManipulationAPI:
             pregrasp_pose_reachable = self._is_pose_reachable(pregrasp_pose, left)
             grasp_pose_reachable = self._is_pose_reachable(grasp_pose, left)
             lift_pose_reachable = self._is_pose_reachable(lift_pose, left)
-            if not pregrasp_pose_reachable:
-                print(f"\t pregrasp not reachable")
-            if not grasp_pose_reachable:
-                print(f"\t grasp not reachable")
-            if not lift_pose_reachable:
-                print(f"\t lift not reachable")
+            # if not pregrasp_pose_reachable:
+            #     print(f"\t pregrasp not reachable")
+            # if not grasp_pose_reachable:
+            #     print(f"\t grasp not reachable")
+            # if not lift_pose_reachable:
+            #     print(f"\t lift not reachable")
 
             if pregrasp_pose_reachable and grasp_pose_reachable and lift_pose_reachable:
                 reachable_grasp_poses.append(grasp_pose)
                 reachable_scores.append(all_scores[i])
+                print(f"Grasp pose {i} is reachable")
 
         print(f"Number of reachable grasp poses: {len(reachable_grasp_poses)}")
         return reachable_grasp_poses, reachable_scores, all_grasp_poses, all_scores
 
-    def execute_grasp(self, grasp_pose: npt.NDArray[np.float32], duration: float, left: bool = False) -> bool:
+    def execute_grasp(
+        self,
+        grasp_pose: npt.NDArray[np.float32],
+        duration: float,
+        left: bool = False,
+        use_cartesian_interpolation: bool = False,
+            ) -> bool:
         print("Executing grasp")
         pregrasp_pose = grasp_pose.copy()
         pregrasp_pose = fv_utils.translateInSelf(pregrasp_pose, [0, 0, 0.1])
@@ -208,19 +225,27 @@ class Reachy2ManipulationAPI:
             arm = self.reachy.r_arm
 
         self.open_gripper(left=left)
-        goto_id = arm.goto_from_matrix(target=pregrasp_pose, duration=duration)
+        goto_id = arm.goto_from_matrix(
+            target=pregrasp_pose,
+            duration=duration,
+            with_cartesian_interpolation=use_cartesian_interpolation
+        )
 
         if goto_id.id == -1:
-            print("Goto ID is -1")
+            print("Goto ID for pregrasp pose is -1")
             return False
 
         while not self.reachy.is_move_finished(goto_id):
             time.sleep(0.1)
 
-        goto_id = arm.goto_from_matrix(target=grasp_pose, duration=duration)
+        goto_id = arm.goto_from_matrix(
+            target=grasp_pose,
+            duration=duration,
+            with_cartesian_interpolation=use_cartesian_interpolation
+        )
 
         if goto_id.id == -1:
-            print("Goto ID is -1")
+            print("Goto ID for grasp pose is -1")
             return False
 
         while not self.reachy.is_move_finished(goto_id):
@@ -230,9 +255,13 @@ class Reachy2ManipulationAPI:
 
         lift_pose = grasp_pose.copy()
         lift_pose[:3, 3] += np.array([0, 0, 0.20])
-        goto_id = arm.goto_from_matrix(target=lift_pose, duration=duration)
+        goto_id = arm.goto_from_matrix(
+            target=lift_pose,
+            duration=duration,
+            with_cartesian_interpolation=use_cartesian_interpolation
+        )
         if goto_id.id == -1:
-            print("Goto ID is -1")
+            print("Goto ID for lift pose is -1")
             return False
 
         while not self.reachy.is_move_finished(goto_id):
@@ -248,11 +277,25 @@ class Reachy2ManipulationAPI:
     def place_object(self) -> bool:
         return True
 
-    def goto_rest_position(self, left: bool = False, open_gripper: bool = True, goto_duration: float = 4.0) -> None:
+    def goto_rest_position(
+        self,
+        left: bool = False,
+        open_gripper: bool = True,
+        goto_duration: float = 4.0,
+        use_cartesian_interpolation: bool = True,
+            ) -> None:
         if not left:
-            self.reachy.r_arm.goto_from_matrix(self.right_start_pose, duration=goto_duration)
+            self.reachy.r_arm.goto_from_matrix(
+                self.right_start_pose,
+                duration=goto_duration,
+                with_cartesian_interpolation=use_cartesian_interpolation,
+                )
         else:
-            self.reachy.l_arm.goto_from_matrix(self.left_start_pose, duration=goto_duration)
+            self.reachy.l_arm.goto_from_matrix(
+                self.left_start_pose,
+                duration=goto_duration,
+                with_cartesian_interpolation=use_cartesian_interpolation,
+                )
 
         if open_gripper:
             self.open_gripper(left=left)
