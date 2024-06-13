@@ -12,6 +12,10 @@ from reachy2_sdk import ReachySDK
 
 from pollen_manipulation.utils import normalize_pose
 
+def getAngleDist(P, Q):
+    R = np.dot(P, Q.T)
+    cos_theta = (np.trace(R)-1)/2
+    return np.arccos(cos_theta)# * (180/np.pi)
 
 class Reachy2ManipulationAPI:
     def __init__(self, reachy: ReachySDK, T_world_cam: npt.NDArray[np.float32], K_cam_left: npt.NDArray[np.float32]):
@@ -94,6 +98,21 @@ class Reachy2ManipulationAPI:
                 # set the pose from camera frame to world frame
                 T_world_graspPose = self.T_world_cam @ T_cam_graspPose
 
+                T_world_graspPose_sym = T_world_graspPose
+
+                #check orientation to score
+                r=R.from_matrix(T_world_graspPose[:3,:3])
+                euler=r.as_euler('xyz')
+                yaw=euler[2]
+                dist=getAngleDist(T_world_graspPose[:3,:3], np.eye(3))
+
+                orientation_score=1.0
+                if dist!=0.0:
+                    orientation_score/=np.abs(dist)
+                if yaw !=0.0:
+                    orientation_score/=np.abs(yaw)
+                print(f'Angle dist: {dist} orientation_score: {orientation_score} yaw: {yaw} score: {scores[obj_id][i]}')
+
                 # Set to reachy's gripper frame
                 T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [0, 0, 90])
                 T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [180, 0, 0])
@@ -109,8 +128,35 @@ class Reachy2ManipulationAPI:
                 )  # Graspnet returns the base of the gripper mesh, we translate to get the base of the opening
 
 
+
                 all_grasp_poses.append(T_world_graspPose)
-                all_scores.append(scores[obj_id][i])
+                all_scores.append(scores[obj_id][i]*orientation_score)
+
+                #rotate 180° along z axis to get symetrical solution
+                T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [0, 0, 180])
+                #check orientation to score
+                r=R.from_matrix(T_world_graspPose_sym[:3,:3])
+                euler=r.as_euler('xyz')
+                yaw=euler[2]
+
+                dist=getAngleDist(T_world_graspPose_sym[:3,:3], np.eye(3))
+                orientation_score=1.0
+                if dist!=0.0:
+                    orientation_score/=dist
+                if yaw !=0.0:
+                    orientation_score/=np.abs(yaw)
+                print(f'Sym Angle dist: {dist} orientation_score: {orientation_score} yaw: {yaw} score: {scores[obj_id][i]}')
+
+
+                T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [0, 0, 90])
+                T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [180, 0, 0])
+                T_world_graspPose_sym = fv_utils.translateInSelf(
+                    T_world_graspPose_sym, [0, 0, -0.0584]
+                )  # Graspnet returns the base of the gripper mesh, we translate to get the base of the opening
+
+                all_grasp_poses.append(T_world_graspPose_sym)
+
+                all_scores.append(scores[obj_id][i]*orientation_score)
 
         # Re sorting because we added new grasp poses at the end of the array
         if len(all_grasp_poses) > 0:
