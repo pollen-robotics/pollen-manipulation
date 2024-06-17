@@ -9,7 +9,7 @@ from contact_graspnet_pytorch.wrapper import ContactGraspNetWrapper
 from reachy2_sdk import ReachySDK
 from scipy.spatial.transform import Rotation as R
 
-from pollen_manipulation.utils import normalize_pose, get_angle_dist
+from pollen_manipulation.utils import get_angle_dist, normalize_pose
 
 
 class Reachy2ManipulationAPI:
