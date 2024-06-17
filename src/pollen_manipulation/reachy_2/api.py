@@ -9,13 +9,7 @@ from contact_graspnet_pytorch.wrapper import ContactGraspNetWrapper
 from reachy2_sdk import ReachySDK
 from scipy.spatial.transform import Rotation as R
 
-from pollen_manipulation.utils import normalize_pose
-
-
-def getAngleDist(P, Q):
-    R = np.dot(P, Q.T)
-    cos_theta = (np.trace(R) - 1) / 2
-    return np.arccos(cos_theta)  # * (180/np.pi)
+from pollen_manipulation.utils import normalize_pose, get_angle_dist
 
 
 class Reachy2ManipulationAPI:
@@ -60,10 +54,10 @@ class Reachy2ManipulationAPI:
 
     def _get_euler_from_homogeneous_matrix(
         self, homogeneous_matrix: npt.NDArray[np.float32], degrees: bool = False
-    ) -> List[List[float]]:
+    ) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.float32]]:
         position = homogeneous_matrix[:3, 3]
         rotation_matrix = homogeneous_matrix[:3, :3]
-        euler_angles = R.from_matrix(rotation_matrix).as_euler("xyz", degrees=degrees)
+        euler_angles: npt.NDArray[np.float32] = R.from_matrix(rotation_matrix).as_euler("xyz", degrees=degrees)
         return position, euler_angles
 
     def _is_pose_reachable(self, pose: npt.NDArray[np.float32], left: bool = False) -> bool:
@@ -113,7 +107,7 @@ class Reachy2ManipulationAPI:
                 r = R.from_matrix(T_world_graspPose[:3, :3])
                 euler = r.as_euler("xyz")
                 yaw = euler[2]
-                dist = getAngleDist(T_world_graspPose[:3, :3], np.eye(3))
+                dist = get_angle_dist(T_world_graspPose[:3, :3], np.eye(3))
 
                 orientation_score = 1.0
                 if dist != 0.0:
@@ -145,7 +139,7 @@ class Reachy2ManipulationAPI:
                 euler = r.as_euler("xyz")
                 yaw = euler[2]
 
-                dist = getAngleDist(T_world_graspPose_sym[:3, :3], np.eye(3))
+                dist = get_angle_dist(T_world_graspPose_sym[:3, :3], np.eye(3))
                 orientation_score = 1.0
                 if dist != 0.0:
                     orientation_score /= dist
