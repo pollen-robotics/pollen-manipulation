@@ -1,14 +1,13 @@
+import time
+from typing import Any, Dict, List, Tuple
+
 import cv2
+import FramesViewer.utils as fv_utils
 import numpy as np
 import numpy.typing as npt
-from scipy.spatial.transform import Rotation as R
-import time
-from typing import Dict, List, Tuple, Any
-
 from contact_graspnet_pytorch.wrapper import ContactGraspNetWrapper
-import FramesViewer.utils as fv_utils
-
 from reachy2_sdk import ReachySDK
+from scipy.spatial.transform import Rotation as R
 
 from pollen_manipulation.utils import normalize_pose
 
