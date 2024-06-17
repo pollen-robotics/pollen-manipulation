@@ -12,10 +12,12 @@ from reachy2_sdk import ReachySDK
 
 from pollen_manipulation.utils import normalize_pose
 
+
 def getAngleDist(P, Q):
     R = np.dot(P, Q.T)
-    cos_theta = (np.trace(R)-1)/2
-    return np.arccos(cos_theta)# * (180/np.pi)
+    cos_theta = (np.trace(R) - 1) / 2
+    return np.arccos(cos_theta)  # * (180/np.pi)
+
 
 class Reachy2ManipulationAPI:
     def __init__(self, reachy: ReachySDK, T_world_cam: npt.NDArray[np.float32], K_cam_left: npt.NDArray[np.float32]):
@@ -53,10 +55,7 @@ class Reachy2ManipulationAPI:
         print("GRASP POSE selected: ", grasp_pose[0])
 
         grasp_success = self.execute_grasp(
-            grasp_pose[0],
-            left=left,
-            duration=grasp_gotos_duration,
-            use_cartesian_interpolation=use_cartesian_interpolation
+            grasp_pose[0], left=left, duration=grasp_gotos_duration, use_cartesian_interpolation=use_cartesian_interpolation
         )
         return grasp_success
 
@@ -80,7 +79,6 @@ class Reachy2ManipulationAPI:
             return False
         return True
 
-
     def get_reachable_grasp_poses(
         self,
         rgb: npt.NDArray[np.uint8],
@@ -94,7 +92,9 @@ class Reachy2ManipulationAPI:
         depth = depth.astype(np.float32)
         mask = mask.astype(np.uint8)
 
-        grasp_poses, scores, contact_pts, openings, pc_full, pc_colors = self.grasp_net.infer(mask, rgb, depth * 0.001, self.K_cam_left)
+        grasp_poses, scores, contact_pts, openings, pc_full, pc_colors = self.grasp_net.infer(
+            mask, rgb, depth * 0.001, self.K_cam_left
+        )
 
         if visualize:
             self.grasp_net.visualize(rgb, mask, pc_full, grasp_poses, scores, pc_colors)
@@ -110,24 +110,23 @@ class Reachy2ManipulationAPI:
 
                 T_world_graspPose_sym = T_world_graspPose
 
-                #check orientation to score
-                r=R.from_matrix(T_world_graspPose[:3,:3])
-                euler=r.as_euler('xyz')
-                yaw=euler[2]
-                dist=getAngleDist(T_world_graspPose[:3,:3], np.eye(3))
+                # check orientation to score
+                r = R.from_matrix(T_world_graspPose[:3, :3])
+                euler = r.as_euler("xyz")
+                yaw = euler[2]
+                dist = getAngleDist(T_world_graspPose[:3, :3], np.eye(3))
 
-                orientation_score=1.0
-                if dist!=0.0:
-                    orientation_score/=np.abs(dist)
-                if yaw !=0.0:
-                    orientation_score/=np.abs(yaw)
+                orientation_score = 1.0
+                if dist != 0.0:
+                    orientation_score /= np.abs(dist)
+                if yaw != 0.0:
+                    orientation_score /= np.abs(yaw)
                 # print(f'Angle dist: {dist} orientation_score: {orientation_score} yaw: {yaw} score: {scores[obj_id][i]}')
 
                 # Set to reachy's gripper frame
                 T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [0, 0, 90])
                 T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [180, 0, 0])
                 # T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [0, -90, 0])
-
 
                 # T_world_graspPose = fv_utils.translateInSelf(
                 #     T_world_graspPose, [0, 0, -0.13]
@@ -137,26 +136,23 @@ class Reachy2ManipulationAPI:
                     T_world_graspPose, [0, 0, -0.0584]
                 )  # Graspnet returns the base of the gripper mesh, we translate to get the base of the opening
 
-
-
                 all_grasp_poses.append(T_world_graspPose)
-                all_scores.append(scores[obj_id][i]*orientation_score)
+                all_scores.append(scores[obj_id][i] * orientation_score)
 
-                #rotate 180° along z axis to get symetrical solution
+                # rotate 180° along z axis to get symetrical solution
                 T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [0, 0, 180])
-                #check orientation to score
-                r=R.from_matrix(T_world_graspPose_sym[:3,:3])
-                euler=r.as_euler('xyz')
-                yaw=euler[2]
+                # check orientation to score
+                r = R.from_matrix(T_world_graspPose_sym[:3, :3])
+                euler = r.as_euler("xyz")
+                yaw = euler[2]
 
-                dist=getAngleDist(T_world_graspPose_sym[:3,:3], np.eye(3))
-                orientation_score=1.0
-                if dist!=0.0:
-                    orientation_score/=dist
-                if yaw !=0.0:
-                    orientation_score/=np.abs(yaw)
+                dist = getAngleDist(T_world_graspPose_sym[:3, :3], np.eye(3))
+                orientation_score = 1.0
+                if dist != 0.0:
+                    orientation_score /= dist
+                if yaw != 0.0:
+                    orientation_score /= np.abs(yaw)
                 # print(f'Sym Angle dist: {dist} orientation_score: {orientation_score} yaw: {yaw} score: {scores[obj_id][i]}')
-
 
                 T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [0, 0, 90])
                 T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [180, 0, 0])
@@ -166,7 +162,7 @@ class Reachy2ManipulationAPI:
 
                 all_grasp_poses.append(T_world_graspPose_sym)
 
-                all_scores.append(scores[obj_id][i]*orientation_score)
+                all_scores.append(scores[obj_id][i] * orientation_score)
 
         # Re sorting because we added new grasp poses at the end of the array
         if len(all_grasp_poses) > 0:
@@ -211,7 +207,7 @@ class Reachy2ManipulationAPI:
         duration: float,
         left: bool = False,
         use_cartesian_interpolation: bool = False,
-            ) -> bool:
+    ) -> bool:
         print("Executing grasp")
         pregrasp_pose = grasp_pose.copy()
         pregrasp_pose = fv_utils.translateInSelf(pregrasp_pose, [0, 0, 0.1])
@@ -226,9 +222,7 @@ class Reachy2ManipulationAPI:
 
         self.open_gripper(left=left)
         goto_id = arm.goto_from_matrix(
-            target=pregrasp_pose,
-            duration=duration,
-            with_cartesian_interpolation=use_cartesian_interpolation
+            target=pregrasp_pose, duration=duration, with_cartesian_interpolation=use_cartesian_interpolation
         )
 
         if goto_id.id == -1:
@@ -239,9 +233,7 @@ class Reachy2ManipulationAPI:
             time.sleep(0.1)
 
         goto_id = arm.goto_from_matrix(
-            target=grasp_pose,
-            duration=duration,
-            with_cartesian_interpolation=use_cartesian_interpolation
+            target=grasp_pose, duration=duration, with_cartesian_interpolation=use_cartesian_interpolation
         )
 
         if goto_id.id == -1:
@@ -256,9 +248,7 @@ class Reachy2ManipulationAPI:
         lift_pose = grasp_pose.copy()
         lift_pose[:3, 3] += np.array([0, 0, 0.20])
         goto_id = arm.goto_from_matrix(
-            target=lift_pose,
-            duration=duration,
-            with_cartesian_interpolation=use_cartesian_interpolation
+            target=lift_pose, duration=duration, with_cartesian_interpolation=use_cartesian_interpolation
         )
         if goto_id.id == -1:
             print("Goto ID for lift pose is -1")
@@ -283,19 +273,19 @@ class Reachy2ManipulationAPI:
         open_gripper: bool = True,
         goto_duration: float = 4.0,
         use_cartesian_interpolation: bool = True,
-            ) -> None:
+    ) -> None:
         if not left:
             self.reachy.r_arm.goto_from_matrix(
                 self.right_start_pose,
                 duration=goto_duration,
                 with_cartesian_interpolation=use_cartesian_interpolation,
-                )
+            )
         else:
             self.reachy.l_arm.goto_from_matrix(
                 self.left_start_pose,
                 duration=goto_duration,
                 with_cartesian_interpolation=use_cartesian_interpolation,
-                )
+            )
 
         if open_gripper:
             self.open_gripper(left=left)
