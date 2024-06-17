@@ -78,7 +78,7 @@ class Reachy2ManipulationAPI:
             return False
         return True
 
-    def get_reachable_grasp_poses(
+    def get_reachable_grasp_poses(  # noqa: C901
         self,
         rgb: npt.NDArray[np.uint8],
         depth: npt.NDArray[np.float32],
