@@ -63,3 +63,13 @@ def find_close_reachable_pose(
             return pose
 
     return None
+
+
+def get_angle_dist(P: npt.NDArray[np.float32], Q: npt.NDArray[np.float32]) -> float:
+    """
+    Compute the angle distance between two rotation matrices P and Q.
+    """
+    R = np.dot(P, Q.T)
+    cos_theta = (np.trace(R) - 1) / 2
+    angle_dist: float = np.arccos(cos_theta)  # * (180/np.pi)
+    return angle_dist
