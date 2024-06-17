@@ -1,6 +1,9 @@
 from reachy_sdk import ReachySDK
 
-from pollen_manipulation.reachy_1.reachability import is_pose_reachable, read_angle_limits
+from pollen_manipulation.reachy_1.reachability import (
+    is_pose_reachable,
+    read_angle_limits,
+)
 
 reachy = ReachySDK("172.16.0.32")
 angle_limits = read_angle_limits(reachy)
