@@ -101,7 +101,12 @@ class Reachy2ManipulationAPI:
                 # set the pose from camera frame to world frame
                 T_world_graspPose = self.T_world_cam @ T_cam_graspPose
 
-                T_world_graspPose_sym = T_world_graspPose
+                T_world_graspPose_sym = T_world_graspPose.copy()
+
+                # Set to reachy's gripper frame
+                T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [0, 0, 90])
+                T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [180, 0, 0])
+                # T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [0, -90, 0])
 
                 # check orientation to score
                 r = R.from_matrix(T_world_graspPose[:3, :3])
@@ -109,7 +114,7 @@ class Reachy2ManipulationAPI:
                 yaw = euler[2]
 
                 #as grasp z axis is along the base of the "fork", this distance is 0 with a top grasp (z up and x front)
-                dist_top = get_angle_dist(T_world_graspPose[:3, :3], np.eye(3))*5.0
+                dist_top = get_angle_dist(T_world_graspPose[:3, :3], np.eye(3))
 
                 #as grasp z axis is along the base of the "fork", this distance is 0 with a top grasp (z up and x front)
                 front=np.zeros((3,3))
@@ -121,14 +126,9 @@ class Reachy2ManipulationAPI:
                 orientation_score = 1.0
                 if dist_top != 0.0:
                     orientation_score /= np.abs(dist_top)
-                if dist_front != 0.0:
-                    orientation_score /= np.abs(dist_front)
+                # if dist_front != 0.0:
+                #     orientation_score /= np.abs(dist_front)
                 # print(f'Angle dist: {dist} orientation_score: {orientation_score} yaw: {yaw} score: {scores[obj_id][i]}')
-
-                # Set to reachy's gripper frame
-                T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [0, 0, 90])
-                T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [180, 0, 0])
-                # T_world_graspPose = fv_utils.rotateInSelf(T_world_graspPose, [0, -90, 0])
 
                 # T_world_graspPose = fv_utils.translateInSelf(
                 #     T_world_graspPose, [0, 0, -0.13]
@@ -139,7 +139,7 @@ class Reachy2ManipulationAPI:
                 )  # Graspnet returns the base of the gripper mesh, we translate to get the base of the opening
 
                 all_grasp_poses.append(T_world_graspPose)
-                all_scores.append(scores[obj_id][i] * orientation_score)
+                all_scores.append(orientation_score)
 
                 # rotate 180° along z axis to get symetrical solution
                 T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [0, 0, 180])
@@ -148,24 +148,25 @@ class Reachy2ManipulationAPI:
                 euler = r.as_euler("xyz")
                 yaw = euler[2]
 
-                dist_top = get_angle_dist(T_world_graspPose_sym[:3, :3], np.eye(3))*5.0
+                T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [0, 0, 90])
+                T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [180, 0, 0])
+
+                dist_top = get_angle_dist(T_world_graspPose_sym[:3, :3], np.eye(3))
                 dist_front = get_angle_dist(T_world_graspPose_sym[:3, :3], front)
                 orientation_score = 1.0
                 if dist_top != 0.0:
                     orientation_score /= np.abs(dist_top)
-                if dist_front != 0.0:
-                    orientation_score /= np.abs(dist_front)
+                # if dist_front != 0.0:
+                #     orientation_score /= np.abs(dist_front)
                 # print(f'Sym Angle dist: {dist} orientation_score: {orientation_score} yaw: {yaw} score: {scores[obj_id][i]}')
 
-                T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [0, 0, 90])
-                T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [180, 0, 0])
                 T_world_graspPose_sym = fv_utils.translateInSelf(
                     T_world_graspPose_sym, [0, 0, -0.0584]
                 )  # Graspnet returns the base of the gripper mesh, we translate to get the base of the opening
 
                 all_grasp_poses.append(T_world_graspPose_sym)
 
-                all_scores.append(scores[obj_id][i] * orientation_score)
+                all_scores.append(-orientation_score)
 
         # Re sorting because we added new grasp poses at the end of the array
         if len(all_grasp_poses) > 0:
@@ -199,7 +200,7 @@ class Reachy2ManipulationAPI:
             if pregrasp_pose_reachable and grasp_pose_reachable and lift_pose_reachable:
                 reachable_grasp_poses.append(grasp_pose)
                 reachable_scores.append(all_scores[i])
-                print(f"Grasp pose {i} is reachable")
+                # print(f"Grasp pose {i} is reachable")
 
         print(f"Number of reachable grasp poses: {len(reachable_grasp_poses)}")
         return reachable_grasp_poses, reachable_scores, all_grasp_poses, all_scores
