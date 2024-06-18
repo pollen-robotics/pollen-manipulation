@@ -9,7 +9,11 @@ from contact_graspnet_pytorch.wrapper import ContactGraspNetWrapper
 from reachy2_sdk import ReachySDK
 from scipy.spatial.transform import Rotation as R
 
-from pollen_manipulation.utils import get_angle_dist, normalize_pose
+from pollen_manipulation.utils import (
+    find_close_reachable_pose,
+    get_angle_dist,
+    normalize_pose,
+)
 
 
 class Reachy2ManipulationAPI:
@@ -174,17 +178,22 @@ class Reachy2ManipulationAPI:
             pregrasp_pose = fv_utils.translateInSelf(grasp_pose, [0, 0, 0.1])
 
             lift_pose = grasp_pose.copy()
-            lift_pose[:3, 3] += np.array([0, 0, 0.20])
+            lift_pose[:3, 3] += np.array([0, 0, 0.10])  # warning, was 0.20
 
             pregrasp_pose_reachable = self._is_pose_reachable(pregrasp_pose, left)
+            if not pregrasp_pose_reachable:
+                print(f"\t pregrasp not reachable")
+                continue
+
             grasp_pose_reachable = self._is_pose_reachable(grasp_pose, left)
+            if not grasp_pose_reachable:
+                print(f"\t grasp not reachable")
+                continue
+
             lift_pose_reachable = self._is_pose_reachable(lift_pose, left)
-            # if not pregrasp_pose_reachable:
-            #     print(f"\t pregrasp not reachable")
-            # if not grasp_pose_reachable:
-            #     print(f"\t grasp not reachable")
-            # if not lift_pose_reachable:
-            #     print(f"\t lift not reachable")
+            if not lift_pose_reachable:
+                print(f"\t lift not reachable")
+                continue
 
             if pregrasp_pose_reachable and grasp_pose_reachable and lift_pose_reachable:
                 reachable_grasp_poses.append(grasp_pose)
@@ -206,7 +215,7 @@ class Reachy2ManipulationAPI:
         pregrasp_pose = fv_utils.translateInSelf(pregrasp_pose, [0, 0, 0.1])
 
         if np.linalg.norm(grasp_pose[:3, 3]) > 1.0 or grasp_pose[:3, 3][0] < 0.0:  # safety check
-            raise ValueError("Grasp pose is too far away (norm > 1.0)")
+            raise ValueError("Grasp pose is too far away (norm > 1.0) or x < 0.0")
 
         if left:
             arm = self.reachy.l_arm
@@ -239,7 +248,7 @@ class Reachy2ManipulationAPI:
         self.close_gripper(left=left)
 
         lift_pose = grasp_pose.copy()
-        lift_pose[:3, 3] += np.array([0, 0, 0.20])
+        lift_pose[:3, 3] += np.array([0, 0, 0.10])  # warning, was 0.20
         goto_id = arm.goto_from_matrix(
             target=lift_pose, duration=duration, with_cartesian_interpolation=use_cartesian_interpolation
         )
@@ -257,7 +266,58 @@ class Reachy2ManipulationAPI:
         return True
 
     # TODO: Implement this method
-    def place_object(self) -> bool:
+    def place(
+        self, target_pose: npt.NDArray[np.float32], place_height: float = 0.0, duration: float = 4, left: bool = False
+    ) -> bool:
+        """
+        Moves the arm to the target pose and then opens the gripper
+
+        Args:
+            target_pose (list): 4x4 homogenous matrix representing the target pose
+            place_height (float, optional): Height (in meters) to place the object from. (default: 0.0)
+            duration (float, optional): Duration of the movement in seconds. (default: 4)
+            left (bool, optional): True if the object should be placed with the left arm, False for the right arm. (default: False)
+        Returns:
+            bool: True if the object was placed successfully, False otherwise
+
+        """
+
+        target_pose = np.array(target_pose).reshape(4, 4)  # just in case :)
+
+        # The rotation component of the pose is the identity matrix, but the gripper's frame has a rotation (z aligned with the forearm, x orthogonal to the fingers)
+        # We need to rotate it
+        if left:
+            target_pose[:3, :3] = self.left_start_pose[:3, :3]
+        else:
+            target_pose[:3, :3] = self.right_start_pose[:3, :3]
+        target_pose[:3, 3] += np.array([0, 0, place_height])
+
+        if np.linalg.norm(target_pose[:3, 3]) > 1.0 or target_pose[:3, 3][0] < 0.0:  # safety check
+            raise ValueError("Target pose is too far away (norm > 1.0) or x < 0.0")
+
+        if left:
+            arm = self.reachy.l_arm
+        else:
+            arm = self.reachy.r_arm
+
+        # TODO check reachability.
+        target_pose = find_close_reachable_pose(target_pose, self._is_pose_reachable, left=left)
+        if target_pose is None:
+            print("Could not find a reachable target pose.")
+            return False
+
+        goto_id = arm.goto_from_matrix(target=target_pose, duration=duration, with_cartesian_interpolation=True)
+
+        if goto_id.id == -1:  # TODO what does this mean?
+            print("Goto ID for pregrasp pose is -1")
+            return False
+
+        while not self.reachy.is_move_finished(goto_id):
+            print("Waiting for movement to finish...") # TODO stuck here sometimes ????
+            time.sleep(0.1)
+
+        self.open_gripper(left=left)
+
         return True
 
     def goto_rest_position(

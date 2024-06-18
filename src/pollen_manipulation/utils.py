@@ -40,7 +40,8 @@ def find_close_reachable_pose(
     if reachable:
         return pose
 
-    for theta_x in range(0, 180):
+    # for theta_x in range(0, 180):
+    for theta_x in range(0, 360):
         # Checking all combinations of translations and rotations between tolerances
         # this is WAY too long to compute even with small tolerances
         for y in range(int(-pos_tol * 100), int(pos_tol * 100), 1):
@@ -57,7 +58,6 @@ def find_close_reachable_pose(
                             print("(", theta_x, y, z, theta_y, theta_z, ") Not reachable")
 
         # rotate 1 degree around x axis
-        pose = fv_utils.rotateInSelf(pose, [-1 if left else 1, 0, 0], degrees=True)
         reachable = reachability_function(pose, left)
         if reachable:
             return pose
