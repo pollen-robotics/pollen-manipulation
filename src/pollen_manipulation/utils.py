@@ -59,6 +59,8 @@ def find_close_reachable_pose(
 
         # rotate 1 degree around x axis
         reachable = reachability_function(pose, left)
+        pose = fv_utils.rotateInSelf(pose, [-1 if left else 1, 0, 0], degrees=True)
+
         if reachable:
             return pose
 
