@@ -70,6 +70,9 @@ def get_angle_dist(P: npt.NDArray[np.float32], Q: npt.NDArray[np.float32]) -> fl
     Compute the angle distance between two rotation matrices P and Q.
     """
     R = np.dot(P, Q.T)
+    print(f'DEBUG MAT DIST: R {R}')
     cos_theta = (np.trace(R) - 1) / 2
+    print(f'DEBUG MAT DIST: cos_theta {cos_theta}')
     angle_dist: float = np.arccos(cos_theta)  # * (180/np.pi)
+    print(f'DEBUG MAT DIST: angle_dist {angle_dist}')
     return angle_dist

@@ -112,7 +112,7 @@ class Reachy2ManipulationAPI:
                 r = R.from_matrix(T_world_graspPose[:3, :3])
                 euler = r.as_euler("xyz") #unclear...
                 yaw = euler[2]
-
+                print(f'GRASP YAW: {euler}')
                 #as grasp z axis is along the base of the "fork", this distance is 0 with a top grasp (z up and x front)
                 dist_top = get_angle_dist(T_world_graspPose[:3, :3], np.eye(3))
 
@@ -145,6 +145,10 @@ class Reachy2ManipulationAPI:
 
                 if dist_front != 0.0 and not np.isnan(dist_front):
                     orientation_score /= (1 + np.abs(dist_front))
+
+                if np.abs(euler[2])>np.pi/2:
+                    orientation_score*=0.0001
+
                 # print(f'Angle dist: {dist} orientation_score: {orientation_score} yaw: {yaw} score: {scores[obj_id][i]}')
 
                 # T_world_graspPose = fv_utils.translateInSelf(
@@ -161,12 +165,14 @@ class Reachy2ManipulationAPI:
                 # rotate 180° along z axis to get symetrical solution
                 T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [0, 0, 180])
                 # check orientation to score
+
+                T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [0, 0, 90])
+                T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [180, 0, 0])
                 r = R.from_matrix(T_world_graspPose_sym[:3, :3])
                 euler = r.as_euler("xyz")
                 yaw = euler[2]
 
-                T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [0, 0, 90])
-                T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [180, 0, 0])
+                print(f'GRASP YAW sym: {euler}')
 
                 dist_top = get_angle_dist(T_world_graspPose_sym[:3, :3], np.eye(3))
                 dist_front = get_angle_dist(T_world_graspPose_sym[:3, :3], front)
@@ -179,6 +185,10 @@ class Reachy2ManipulationAPI:
                 if dist_front != 0.0 and not np.isnan(dist_front):
                     orientation_score /= (1 + np.abs(dist_front))
                 # print(f'Sym Angle dist: {dist} orientation_score: {orientation_score} yaw: {yaw} score: {scores[obj_id][i]}')
+
+                if np.abs(euler[2])>np.pi/2:
+                    orientation_score*=0.0001
+
 
                 T_world_graspPose_sym = fv_utils.translateInSelf(
                     T_world_graspPose_sym, [0, 0, -0.0584]
