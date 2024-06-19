@@ -44,15 +44,15 @@ class Reachy2ManipulationAPI:
         if len(pose) == 0:
             return False
 
-        grasp_pose, _, _, _ = self.get_reachable_grasp_poses(rgb, depth, mask, left=left, visualize=visualize)
+        grasp_poses, _, _, _ = self.get_reachable_grasp_poses(rgb, depth, mask, left=left, visualize=visualize)
 
-        if len(grasp_pose) == 0:
+        if len(grasp_poses) == 0:
             return False
 
-        print("GRASP POSE selected: ", grasp_pose[0])
+        print("GRASP POSE selected: ", grasp_poses[0])
 
         grasp_success = self.execute_grasp(
-            grasp_pose[0], left=left, duration=grasp_gotos_duration, use_cartesian_interpolation=use_cartesian_interpolation
+            grasp_poses[0], left=left, duration=grasp_gotos_duration, use_cartesian_interpolation=use_cartesian_interpolation
         )
         return grasp_success
 
@@ -215,7 +215,8 @@ class Reachy2ManipulationAPI:
         pregrasp_pose = fv_utils.translateInSelf(pregrasp_pose, [0, 0, 0.1])
 
         if np.linalg.norm(grasp_pose[:3, 3]) > 1.0 or grasp_pose[:3, 3][0] < 0.0:  # safety check
-            raise ValueError("Grasp pose is too far away (norm > 1.0) or x < 0.0")
+            print("Grasp pose is too far away (norm > 1.0) or x < 0.0")
+            return False
 
         if left:
             arm = self.reachy.l_arm
