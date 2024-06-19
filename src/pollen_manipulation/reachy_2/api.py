@@ -157,7 +157,11 @@ class Reachy2ManipulationAPI:
                 # if dist_top != 0.0:
                 #     orientation_score /= np.abs(dist_top)
                 if np.isnan(dist_front):
-                    print(f"NAN dist_front: {T_world_graspPose_sym[:3, :3]}")
+                    print(f'NAN dist_front: {T_world_graspPose_sym[:3, :3]}')
+                    orientation_score*=0.000001
+
+                if dist_front == 0.0:
+                    print(f'Perfect dist_front?!: {T_world_graspPose_sym[:3, :3]}')
 
                 if dist_front != 0.0 and not np.isnan(dist_front):
                     orientation_score /= 1 + np.abs(dist_front)
@@ -191,7 +195,11 @@ class Reachy2ManipulationAPI:
                 # if dist_top != 0.0:
                 #     orientation_score /= np.abs(dist_top)
                 if np.isnan(dist_front):
-                    print(f"NAN dist_front sym: {T_world_graspPose_sym[:3, :3]}")
+                    print(f'NAN dist_front sym: {T_world_graspPose_sym[:3, :3]}')
+                    orientation_score*=0.000001
+
+                if dist_front == 0.0:
+                    print(f'Perfect dist_front sym?!: {T_world_graspPose_sym[:3, :3]}')
 
                 if dist_front != 0.0 and not np.isnan(dist_front):
                     orientation_score /= 1 + np.abs(dist_front)
