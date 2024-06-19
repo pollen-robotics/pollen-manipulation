@@ -231,8 +231,9 @@ class Reachy2ManipulationAPI:
             print("Goto ID for pregrasp pose is -1")
             return False
 
-        while not self.reachy.is_move_finished(goto_id):
-            time.sleep(0.1)
+        if goto_id.id != 0:
+            while not self.reachy.is_move_finished(goto_id):
+                time.sleep(0.1)
 
         goto_id = arm.goto_from_matrix(
             target=grasp_pose, duration=duration, with_cartesian_interpolation=use_cartesian_interpolation
@@ -241,9 +242,9 @@ class Reachy2ManipulationAPI:
         if goto_id.id == -1:
             print("Goto ID for grasp pose is -1")
             return False
-
-        while not self.reachy.is_move_finished(goto_id):
-            time.sleep(0.1)
+        if goto_id.id != 0:
+            while not self.reachy.is_move_finished(goto_id):
+                time.sleep(0.1)
 
         self.close_gripper(left=left)
 
@@ -256,8 +257,9 @@ class Reachy2ManipulationAPI:
             print("Goto ID for lift pose is -1")
             return False
 
-        while not self.reachy.is_move_finished(goto_id):
-            time.sleep(0.1)
+        if goto_id.id != 0:
+            while not self.reachy.is_move_finished(goto_id):
+                time.sleep(0.1)
 
         return True
 
@@ -308,13 +310,14 @@ class Reachy2ManipulationAPI:
 
         goto_id = arm.goto_from_matrix(target=target_pose, duration=duration, with_cartesian_interpolation=True)
 
-        if goto_id.id == -1:  # TODO what does this mean?
+        if goto_id.id == -1:
             print("Goto ID for pregrasp pose is -1")
             return False
 
-        while not self.reachy.is_move_finished(goto_id):
-            print("Waiting for movement to finish...") # TODO stuck here sometimes ????
-            time.sleep(0.1)
+        if goto_id.id != 0:
+            while not self.reachy.is_move_finished(goto_id):
+                print("Waiting for movement to finish...")
+                time.sleep(0.1)
 
         self.open_gripper(left=left)
 
@@ -328,17 +331,21 @@ class Reachy2ManipulationAPI:
         use_cartesian_interpolation: bool = True,
     ) -> None:
         if not left:
-            self.reachy.r_arm.goto_from_matrix(
+            goto_id = self.reachy.r_arm.goto_from_matrix(
                 self.right_start_pose,
                 duration=goto_duration,
                 with_cartesian_interpolation=use_cartesian_interpolation,
             )
         else:
-            self.reachy.l_arm.goto_from_matrix(
+            goto_id = self.reachy.l_arm.goto_from_matrix(
                 self.left_start_pose,
                 duration=goto_duration,
                 with_cartesian_interpolation=use_cartesian_interpolation,
             )
+
+        if goto_id.id != 0:
+            while not self.reachy.is_move_finished(goto_id):
+                time.sleep(0.1)
 
         if open_gripper:
             self.open_gripper(left=left)
