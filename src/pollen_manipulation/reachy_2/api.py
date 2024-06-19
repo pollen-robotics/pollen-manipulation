@@ -34,7 +34,7 @@ class Reachy2ManipulationAPI:
         left: bool = False,
         visualize: bool = False,
         grasp_gotos_duration: float = 4.0,
-        use_cartesian_interpolation: bool = False,
+        use_cartesian_interpolation: bool = True,
     ) -> bool:
         pose = object_info["pose"]
         rgb = object_info["rgb"]
@@ -44,15 +44,28 @@ class Reachy2ManipulationAPI:
         if len(pose) == 0:
             return False
 
-        grasp_poses, _, _, _ = self.get_reachable_grasp_poses(rgb, depth, mask, left=left, visualize=visualize)
+        grasp_poses, scores, _, _ = self.get_reachable_grasp_poses(rgb, depth, mask, left=left, visualize=visualize)
+        print("===================")
+        print("ALL SCORES:")
+        print(scores)
+        print("=========================")
 
         if len(grasp_poses) == 0:
             return False
 
-        print("GRASP POSE selected: ", grasp_poses[0])
+        grasp_pose = grasp_poses[0]
+        score = scores[0]
+
+        if left:
+            arm = self.reachy.l_arm
+        else:
+            arm = self.reachy.r_arm
+
+        arm.publish_grasp_poses([grasp_pose], [score])
+        print("GRASP POSE selected: ", grasp_pose, "SCORE: ", score)
 
         grasp_success = self.execute_grasp(
-            grasp_poses[0], left=left, duration=grasp_gotos_duration, use_cartesian_interpolation=use_cartesian_interpolation
+            grasp_pose, left=left, duration=grasp_gotos_duration, use_cartesian_interpolation=use_cartesian_interpolation
         )
         return grasp_success
 
@@ -242,7 +255,7 @@ class Reachy2ManipulationAPI:
         grasp_pose: npt.NDArray[np.float32],
         duration: float,
         left: bool = False,
-        use_cartesian_interpolation: bool = False,
+        use_cartesian_interpolation: bool = True,
     ) -> bool:
         print("Executing grasp")
         grasp_pose = fv_utils.translateInSelf(
@@ -305,7 +318,12 @@ class Reachy2ManipulationAPI:
 
     # TODO: Implement this method
     def place(
-        self, target_pose: npt.NDArray[np.float32], place_height: float = 0.0, duration: float = 4, left: bool = False
+        self,
+        target_pose: npt.NDArray[np.float32],
+        place_height: float = 0.0,
+        duration: float = 4,
+        left: bool = False,
+        use_cartesian_interpolation: bool = True,
     ) -> bool:
         """
         Moves the arm to the target pose and then opens the gripper
@@ -344,7 +362,9 @@ class Reachy2ManipulationAPI:
             print("Could not find a reachable target pose.")
             return False
 
-        goto_id = arm.goto_from_matrix(target=target_pose, duration=duration, with_cartesian_interpolation=True)
+        goto_id = arm.goto_from_matrix(
+            target=target_pose, duration=duration, with_cartesian_interpolation=use_cartesian_interpolation
+        )
 
         if goto_id.id == -1:
             print("Goto ID for pregrasp pose is -1")
