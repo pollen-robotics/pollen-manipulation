@@ -233,6 +233,7 @@ class Reachy2ManipulationAPI:
         use_cartesian_interpolation: bool = False,
     ) -> bool:
         print("Executing grasp")
+        grasp_pose = fv_utils.translateInSelf(grasp_pose, [0, 0, -0.0584])  # Graspnet returns the base of the gripper mesh, we translate to get the base of the opening
         pregrasp_pose = grasp_pose.copy()
         pregrasp_pose = fv_utils.translateInSelf(pregrasp_pose, [0, 0, 0.1])
 
@@ -253,8 +254,8 @@ class Reachy2ManipulationAPI:
             print("Goto ID for pregrasp pose is -1")
             return False
 
-        while not self.reachy.is_move_finished(goto_id):
-            time.sleep(0.1)
+        # while not self.reachy.is_move_finished(goto_id):
+        #     time.sleep(0.1)
 
         goto_id = arm.goto_from_matrix(
             target=grasp_pose, duration=duration, with_cartesian_interpolation=use_cartesian_interpolation
@@ -264,13 +265,13 @@ class Reachy2ManipulationAPI:
             print("Goto ID for grasp pose is -1")
             return False
 
-        while not self.reachy.is_move_finished(goto_id):
-            time.sleep(0.1)
+        # while not self.reachy.is_move_finished(goto_id):
+        #     time.sleep(0.1)
 
         self.close_gripper(left=left)
 
         lift_pose = grasp_pose.copy()
-        lift_pose[:3, 3] += np.array([0, 0, 0.20])
+        lift_pose[:3, 3] += np.array([0, 0, 0.10])
         goto_id = arm.goto_from_matrix(
             target=lift_pose, duration=duration, with_cartesian_interpolation=use_cartesian_interpolation
         )
@@ -278,8 +279,8 @@ class Reachy2ManipulationAPI:
             print("Goto ID for lift pose is -1")
             return False
 
-        while not self.reachy.is_move_finished(goto_id):
-            time.sleep(0.1)
+        # while not self.reachy.is_move_finished(goto_id):
+        #     time.sleep(0.1)
 
         return True
 
