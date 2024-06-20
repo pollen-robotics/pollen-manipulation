@@ -1,3 +1,18 @@
+# DEPRECATED ??
+# DEPRECATED ??
+# DEPRECATED ??
+# DEPRECATED ??
+# DEPRECATED ??
+# DEPRECATED ??
+# DEPRECATED ??
+# DEPRECATED ??
+# DEPRECATED ??
+# DEPRECATED ??
+# DEPRECATED ??
+# DEPRECATED ??
+# DEPRECATED ??
+# It's been a long time since we used this.
+
 import time
 from threading import Thread
 from typing import Any, Dict, List, Tuple

@@ -17,8 +17,31 @@ from pollen_manipulation.utils import (
 
 
 class Reachy2ManipulationAPI:
-    def __init__(self, reachy: ReachySDK, T_world_cam: npt.NDArray[np.float32], K_cam_left: npt.NDArray[np.float32]):
-        self.reachy = reachy
+    def __init__(
+        self,
+        reachy: ReachySDK,
+        T_world_cam: npt.NDArray[np.float32],
+        K_cam_left: npt.NDArray[np.float32],
+        simu_preview: bool = True,
+    ) -> None:
+        self.reachy_real = reachy
+        self.reachy = self.reachy_real
+        self.simu_preview = simu_preview
+
+        # TODO Maybe remove this if it is too annoying
+        if not self.simu_preview:
+            inp = input("Warning, simu preview is disabled, continue ? (N/y)")
+            if inp.lower() != "y":
+                raise ValueError("Cancelling")
+
+        if self.simu_preview:
+            if self.reachy._host == "localhost":
+                raise ValueError("Simu preview is not available the main robot is localhost")
+            self.reachy_simu = ReachySDK("localhost")
+            if not self.reachy_simu.is_connected():
+                raise ValueError("Simu preview is not available, cannot connect to the simu")
+
+            self.reachy = self.reachy_simu
 
         self.T_world_cam = T_world_cam
         self.K_cam_left = K_cam_left
@@ -27,6 +50,26 @@ class Reachy2ManipulationAPI:
         self.left_start_pose = fv_utils.make_pose([0.20, 0.24, -0.23], [0, -90, 0])
 
         self.grasp_net = ContactGraspNetWrapper()
+
+    def ask_simu_preview(self) -> str:
+        """
+        If self.simu_preview is True, asks the user if they want to run the move on the simu robot before running it on the real robot.
+        Returns True if the user has chosen to run the move on the simu robot, False otherwise.
+        """
+        ret = "real"
+        if not self.simu_preview:
+            return ret
+
+        inp = input("Run the move on the simu robot before running it on the real robot ? (Y/n/s[kip]): ")
+        if inp.lower() == "n":
+            print("Ok, running the move on the real robot")
+            ret = "real"
+        elif inp.lower() == "s" or inp.lower() == "skip":
+            print("Ok, skipping the move")
+            ret = "skip"
+        else:
+            ret = "simu"
+        return ret
 
     def grasp_object(
         self,
@@ -64,9 +107,24 @@ class Reachy2ManipulationAPI:
         arm.publish_grasp_poses([grasp_pose], [score])
         print("GRASP POSE selected: ", grasp_pose, "SCORE: ", score)
 
-        grasp_success = self.execute_grasp(
+        simu = self.ask_simu_preview()
+        while simu == "simu":  # while the user wants to run the move on the simu robot
+            grasp_success = self._execute_grasp(
+                grasp_pose,
+                left=left,
+                duration=grasp_gotos_duration,
+                use_cartesian_interpolation=use_cartesian_interpolation,
+                play_in_simu=True,
+            )
+            simu = self.ask_simu_preview()
+
+        if simu == "skip":
+            return False
+
+        grasp_success = self._execute_grasp(
             grasp_pose, left=left, duration=grasp_gotos_duration, use_cartesian_interpolation=use_cartesian_interpolation
         )
+
         return grasp_success
 
     def _get_euler_from_homogeneous_matrix(
@@ -157,11 +215,11 @@ class Reachy2ManipulationAPI:
                 # if dist_top != 0.0:
                 #     orientation_score /= np.abs(dist_top)
                 if np.isnan(dist_front):
-                    print(f'NAN dist_front: {T_world_graspPose_sym[:3, :3]}')
-                    orientation_score*=0.000001
+                    print(f"NAN dist_front: {T_world_graspPose_sym[:3, :3]}")
+                    orientation_score *= 0.000001
 
                 if dist_front == 0.0:
-                    print(f'Perfect dist_front?!: {T_world_graspPose_sym[:3, :3]}')
+                    print(f"Perfect dist_front?!: {T_world_graspPose_sym[:3, :3]}")
 
                 if dist_front != 0.0 and not np.isnan(dist_front):
                     orientation_score /= 1 + np.abs(dist_front)
@@ -195,11 +253,11 @@ class Reachy2ManipulationAPI:
                 # if dist_top != 0.0:
                 #     orientation_score /= np.abs(dist_top)
                 if np.isnan(dist_front):
-                    print(f'NAN dist_front sym: {T_world_graspPose_sym[:3, :3]}')
-                    orientation_score*=0.000001
+                    print(f"NAN dist_front sym: {T_world_graspPose_sym[:3, :3]}")
+                    orientation_score *= 0.000001
 
                 if dist_front == 0.0:
-                    print(f'Perfect dist_front sym?!: {T_world_graspPose_sym[:3, :3]}')
+                    print(f"Perfect dist_front sym?!: {T_world_graspPose_sym[:3, :3]}")
 
                 if dist_front != 0.0 and not np.isnan(dist_front):
                     orientation_score /= 1 + np.abs(dist_front)
@@ -258,14 +316,22 @@ class Reachy2ManipulationAPI:
         print(f"Number of reachable grasp poses: {len(reachable_grasp_poses)}")
         return reachable_grasp_poses, reachable_scores, all_grasp_poses, all_scores
 
-    def execute_grasp(
+    def _execute_grasp(
         self,
         grasp_pose: npt.NDArray[np.float32],
         duration: float,
         left: bool = False,
         use_cartesian_interpolation: bool = True,
+        play_in_simu: bool = False,
     ) -> bool:
-        print("Executing grasp")
+
+        if self.simu_preview and play_in_simu:
+            self.reachy = self.reachy_simu
+            # TODO set simu reachy to the same state as the real one
+        else:
+            self.reachy = self.reachy_real
+
+        print("Executing grasp in ", "simu" if play_in_simu else "real robot")
         grasp_pose = fv_utils.translateInSelf(
             grasp_pose, [0, 0, -0.0584]
         )  # Graspnet returns the base of the gripper mesh, we translate to get the base of the opening
@@ -324,14 +390,47 @@ class Reachy2ManipulationAPI:
     def drop_object(self) -> bool:
         return True
 
-    # TODO: Implement this method
-    def place(
+    def place_object(
         self,
         target_pose: npt.NDArray[np.float32],
         place_height: float = 0.0,
         duration: float = 4,
         left: bool = False,
         use_cartesian_interpolation: bool = True,
+    ) -> bool:
+
+        simu = self.ask_simu_preview()
+        while simu == "simu":  # while the user wants to run the move on the simu robot
+            place_success = self._place(
+                target_pose,
+                place_height=place_height,
+                duration=duration,
+                left=left,
+                use_cartesian_interpolation=use_cartesian_interpolation,
+                play_in_simu=True,
+            )
+            simu = self.ask_simu_preview()
+
+        if simu == "skip":
+            return False
+
+        place_success = self._place(
+            target_pose,
+            place_height=place_height,
+            duration=duration,
+            left=left,
+            use_cartesian_interpolation=use_cartesian_interpolation,
+        )
+        return place_success
+
+    def _place(
+        self,
+        target_pose: npt.NDArray[np.float32],
+        place_height: float = 0.0,
+        duration: float = 4,
+        left: bool = False,
+        use_cartesian_interpolation: bool = True,
+        play_in_simu: bool = False,
     ) -> bool:
         """
         Moves the arm to the target pose and then opens the gripper
@@ -345,6 +444,14 @@ class Reachy2ManipulationAPI:
             bool: True if the object was placed successfully, False otherwise
 
         """
+
+        if self.simu_preview and play_in_simu:
+            self.reachy = self.reachy_simu
+            # TODO set simu reachy to the same state as the real one
+        else:
+            self.reachy = self.reachy_real
+
+        print("Executing place in ", "simu" if play_in_simu else "real robot")
 
         target_pose = np.array(target_pose).reshape(4, 4)  # just in case :)
 
@@ -393,7 +500,14 @@ class Reachy2ManipulationAPI:
         open_gripper: bool = True,
         goto_duration: float = 4.0,
         use_cartesian_interpolation: bool = True,
+        play_in_simu: bool = False,
     ) -> None:
+
+        if self.simu_preview and play_in_simu:
+            self.reachy = self.reachy_simu
+        else:
+            self.reachy = self.reachy_real
+
         if not left:
             goto_id = self.reachy.r_arm.goto_from_matrix(
                 self.right_start_pose,
@@ -414,20 +528,38 @@ class Reachy2ManipulationAPI:
         if open_gripper:
             self.open_gripper(left=left)
 
-    def open_gripper(self, left: bool = False) -> None:
+    def open_gripper(self, left: bool = False, play_in_simu: bool = False) -> None:
+        if self.simu_preview and play_in_simu:
+            self.reachy = self.reachy_simu
+        else:
+            self.reachy = self.reachy_real
+
         if left:
             self.reachy.l_arm.gripper.open()
         else:
             self.reachy.r_arm.gripper.open()
 
-    def close_gripper(self, left: bool = False) -> None:
+    def close_gripper(self, left: bool = False, play_in_simu: bool = False) -> None:
+        if self.simu_preview and play_in_simu:
+            self.reachy = self.reachy_simu
+        else:
+            self.reachy = self.reachy_real
+
         if left:
             self.reachy.l_arm.gripper.close()
         else:
             self.reachy.r_arm.gripper.close()
 
-    def turn_robot_on(self) -> None:
+    def turn_robot_on(self, play_in_simu: bool = False) -> None:
+        if self.simu_preview and play_in_simu:
+            self.reachy = self.reachy_simu
+        else:
+            self.reachy = self.reachy_real
         self.reachy.turn_on()
 
-    def stop(self) -> None:
+    def stop(self, play_in_simu: bool = False) -> None:
+        if self.simu_preview and play_in_simu:
+            self.reachy = self.reachy_simu
+        else:
+            self.reachy = self.reachy_real
         self.reachy.turn_off_smoothly()
