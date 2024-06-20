@@ -49,6 +49,10 @@ class Reachy2ManipulationAPI:
         self.right_start_pose = fv_utils.make_pose([0.20, -0.24, -0.23], [0, -90, 0])
         self.left_start_pose = fv_utils.make_pose([0.20, 0.24, -0.23], [0, -90, 0])
 
+        self.last_pregrasp_pose: npt.NDArray[np.float64] = np.eye(4)
+        self.last_grasp_pose: npt.NDArray[np.float64] = np.eye(4)
+        self.last_lift_pose: npt.NDArray[np.float64] = np.eye(4)
+
         self.grasp_net = ContactGraspNetWrapper()
 
     def ask_simu_preview(self) -> str:
@@ -109,6 +113,8 @@ class Reachy2ManipulationAPI:
 
         simu = self.ask_simu_preview()
         while simu == "simu":  # while the user wants to run the move on the simu robot
+            simu_arm = self.reachy_simu.l_arm if left else self.reachy_simu.r_arm
+            simu_arm.publish_grasp_poses([grasp_pose], [score])
             grasp_success = self._execute_grasp(
                 grasp_pose,
                 left=left,
@@ -352,7 +358,7 @@ class Reachy2ManipulationAPI:
 
     def _execute_grasp(
         self,
-        grasp_pose: npt.NDArray[np.float32],
+        grasp_pose: npt.NDArray[np.float64],
         duration: float,
         left: bool = False,
         use_cartesian_interpolation: bool = True,
@@ -418,6 +424,10 @@ class Reachy2ManipulationAPI:
 
         # while not self.reachy.is_move_finished(goto_id):
         #     time.sleep(0.1)
+
+        self.last_pregrasp_pose = pregrasp_pose
+        self.last_grasp_pose = grasp_pose
+        self.last_lift_pose = lift_pose
 
         return True
 
@@ -536,7 +546,7 @@ class Reachy2ManipulationAPI:
         goto_duration: float = 4.0,
         use_cartesian_interpolation: bool = True,
         play_in_simu: bool = False,
-    ) -> None:
+    ) -> bool:
 
         if self.simu_preview and play_in_simu:
             self.reachy = self.reachy_simu
@@ -544,24 +554,41 @@ class Reachy2ManipulationAPI:
             self.reachy = self.reachy_real
 
         if not left:
-            goto_id = self.reachy.r_arm.goto_from_matrix(
-                self.right_start_pose,
-                duration=goto_duration,
-                with_cartesian_interpolation=use_cartesian_interpolation,
-            )
+            arm = self.reachy.r_arm
+            start_pose = self.right_start_pose
         else:
-            goto_id = self.reachy.l_arm.goto_from_matrix(
-                self.left_start_pose,
-                duration=goto_duration,
-                with_cartesian_interpolation=use_cartesian_interpolation,
+            arm = self.reachy.l_arm
+            start_pose = self.left_start_pose
+
+        if np.array_equal(start_pose, np.eye(4)):
+            arm.goto_from_matrix(
+                start_pose, duration=goto_duration * 2.0, with_cartesian_interpolation=use_cartesian_interpolation
             )
 
-        if goto_id.id != 0:
-            while not self.reachy.is_move_finished(goto_id):
-                time.sleep(0.1)
+            if open_gripper:
+                self.open_gripper(left=left)
+            return True
+
+        arm.goto_from_matrix(
+            target=self.last_lift_pose, duration=goto_duration, with_cartesian_interpolation=use_cartesian_interpolation
+        )
+
+        arm.goto_from_matrix(
+            target=self.last_grasp_pose, duration=goto_duration, with_cartesian_interpolation=use_cartesian_interpolation
+        )
+
+        arm.goto_from_matrix(
+            target=self.last_pregrasp_pose, duration=goto_duration, with_cartesian_interpolation=use_cartesian_interpolation
+        )
+
+        arm.goto_from_matrix(
+            start_pose, duration=goto_duration, with_cartesian_interpolation=use_cartesian_interpolation
+        )
 
         if open_gripper:
             self.open_gripper(left=left)
+
+        return True
 
     def open_gripper(self, left: bool = False, play_in_simu: bool = False) -> None:
         if self.simu_preview and play_in_simu:
