@@ -165,7 +165,7 @@ class Reachy2ManipulationAPI:
         )
 
         if visualize:
-            self.grasp_net.visualize(rgb, mask, pc_full, grasp_poses, scores, pc_colors)
+            self.grasp_net.visualize(rgb, mask, pc_full, grasp_poses, scores, pc_colors,openings)
 
         all_grasp_poses = []
         all_scores = []
@@ -185,6 +185,14 @@ class Reachy2ManipulationAPI:
 
                 # as grasp z axis is along the base of the "fork", this distance is 0 with a top grasp (z up and x front)
                 dist_top = get_angle_dist(T_world_graspPose[:3, :3], np.eye(3))
+
+                z_grasp=fv_utils.translateInSelf(T_world_graspPose, [0,0,1])-T_world_graspPose
+                z_grasp=z_grasp[:,3][0:3] #x,y,z  vector
+                z_up=np.array([0,0,1])
+                cos_theta=np.dot(z_grasp,z_up)/np.linalg.norm(z_grasp)
+                theta=np.arccos(cos_theta)
+
+
 
                 # as grasp z axis is along the base of the "fork", this distance is 0 with a top grasp (z up and x front)
                 # front=np.zeros((3,3))
@@ -214,6 +222,7 @@ class Reachy2ManipulationAPI:
                 orientation_score = 1.0
                 # if dist_top != 0.0:
                 #     orientation_score /= np.abs(dist_top)
+
                 if np.isnan(dist_front):
                     print(f"NAN dist_front: {T_world_graspPose_sym[:3, :3]}")
                     orientation_score *= 0.000001
@@ -227,6 +236,15 @@ class Reachy2ManipulationAPI:
                 if np.abs(dist_front) > np.pi / 2:
                     orientation_score *= 0.1
 
+
+                if cos_theta<0.0:
+                    print(f'WARNING, z grasp towards bottom?!!')
+                    orientation_score *=0.0001
+                elif theta<np.radians(45.0):
+                    print(f'WARNING, z grasp is close to top grasp')
+                    orientation_score *=0.01
+                else:
+                    orientation_score *=theta
                 # print(f'Angle dist: {dist} orientation_score: {orientation_score} yaw: {yaw} score: {scores[obj_id][i]}')
 
                 # T_world_graspPose = fv_utils.translateInSelf(
@@ -272,6 +290,8 @@ class Reachy2ManipulationAPI:
 
                 all_grasp_poses.append(T_world_graspPose_sym)
 
+                orientation_score*=openings[obj_id][i]*100.0
+                print(f'SCORE: {orientation_score}')
                 all_scores.append(orientation_score)
 
         # Re sorting because we added new grasp poses at the end of the array
