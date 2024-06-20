@@ -109,6 +109,8 @@ class Reachy2ManipulationAPI:
 
         simu = self.ask_simu_preview()
         while simu == "simu":  # while the user wants to run the move on the simu robot
+            simu_arm = self.reachy_simu.l_arm if left else self.reachy_simu.r_arm
+            simu_arm.publish_grasp_poses([grasp_pose], [score])
             grasp_success = self._execute_grasp(
                 grasp_pose,
                 left=left,
