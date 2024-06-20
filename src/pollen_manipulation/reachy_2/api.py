@@ -37,10 +37,10 @@ class Reachy2ManipulationAPI:
         if self.simu_preview:
             if self.reachy._host == "localhost":
                 raise ValueError("Simu preview is not available the main robot is localhost")
-            self.reachy_simu = ReachySDK("localhost")
+            self.reachy_simu = ReachySDK("localhost", with_synchro=False)
             if not self.reachy_simu.is_connected():
                 raise ValueError("Simu preview is not available, cannot connect to the simu")
-
+            self.reachy_simu.turn_on()  # turn on the simu robot by default
             self.reachy = self.reachy_simu
 
         self.T_world_cam = T_world_cam
@@ -98,7 +98,7 @@ class Reachy2ManipulationAPI:
 
         grasp_pose = grasp_poses[0]
         score = scores[0]
-
+        self.reachy = self.reachy_real
         if left:
             arm = self.reachy.l_arm
         else:
@@ -316,6 +316,20 @@ class Reachy2ManipulationAPI:
         print(f"Number of reachable grasp poses: {len(reachable_grasp_poses)}")
         return reachable_grasp_poses, reachable_scores, all_grasp_poses, all_scores
 
+    def synchro_simu_joints(self):
+        l_real_joints = self.reachy_real.l_arm.get_joints_positions()
+        l_gripper_opening = self.reachy_real.l_arm.gripper.opening
+
+        r_real_joints = self.reachy_real.r_arm.get_joints_positions()
+        r_gripper_opening = self.reachy_real.r_arm.gripper.opening
+
+        self.reachy_simu.l_arm.goto_joints(l_real_joints, duration=0.1)
+        self.reachy_simu.r_arm.goto_joints(r_real_joints, duration=0.1)
+
+        self.reachy_simu.l_arm.gripper.set_opening(l_gripper_opening)
+        self.reachy_simu.r_arm.gripper.set_opening(r_gripper_opening)
+        time.sleep(0.2)
+
     def _execute_grasp(
         self,
         grasp_pose: npt.NDArray[np.float32],
@@ -326,6 +340,7 @@ class Reachy2ManipulationAPI:
     ) -> bool:
 
         if self.simu_preview and play_in_simu:
+            self.synchro_simu_joints()
             self.reachy = self.reachy_simu
             # TODO set simu reachy to the same state as the real one
         else:
@@ -347,7 +362,7 @@ class Reachy2ManipulationAPI:
         else:
             arm = self.reachy.r_arm
 
-        self.open_gripper(left=left)
+        self.open_gripper(left=left, play_in_simu=play_in_simu)
         goto_id = arm.goto_from_matrix(
             target=pregrasp_pose, duration=duration, with_cartesian_interpolation=use_cartesian_interpolation
         )
@@ -370,7 +385,7 @@ class Reachy2ManipulationAPI:
         # while not self.reachy.is_move_finished(goto_id):
         #     time.sleep(0.1)
 
-        self.close_gripper(left=left)
+        self.close_gripper(left=left, play_in_simu=play_in_simu)
 
         lift_pose = grasp_pose.copy()
         lift_pose[:3, 3] += np.array([0, 0, 0.10])
@@ -446,8 +461,8 @@ class Reachy2ManipulationAPI:
         """
 
         if self.simu_preview and play_in_simu:
+            self.synchro_simu_joints()
             self.reachy = self.reachy_simu
-            # TODO set simu reachy to the same state as the real one
         else:
             self.reachy = self.reachy_real
 
@@ -490,7 +505,7 @@ class Reachy2ManipulationAPI:
                 print("Waiting for movement to finish...")
                 time.sleep(0.1)
 
-        self.open_gripper(left=left)
+        self.open_gripper(left=left, play_in_simu=play_in_simu)
 
         return True
 
@@ -550,16 +565,10 @@ class Reachy2ManipulationAPI:
         else:
             self.reachy.r_arm.gripper.close()
 
-    def turn_robot_on(self, play_in_simu: bool = False) -> None:
-        if self.simu_preview and play_in_simu:
-            self.reachy = self.reachy_simu
-        else:
-            self.reachy = self.reachy_real
+    def turn_robot_on(self) -> None:
+        self.reachy = self.reachy_real
         self.reachy.turn_on()
 
-    def stop(self, play_in_simu: bool = False) -> None:
-        if self.simu_preview and play_in_simu:
-            self.reachy = self.reachy_simu
-        else:
-            self.reachy = self.reachy_real
+    def stop(self) -> None:
+        self.reachy = self.reachy_real
         self.reachy.turn_off_smoothly()
