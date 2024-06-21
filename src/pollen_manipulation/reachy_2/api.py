@@ -8,12 +8,31 @@ import numpy.typing as npt
 from contact_graspnet_pytorch.wrapper import ContactGraspNetWrapper
 from reachy2_sdk import ReachySDK
 from scipy.spatial.transform import Rotation as R
-
+from enum import Enum
 from pollen_manipulation.utils import (
     find_close_reachable_pose,
     get_angle_dist,
     normalize_pose,
 )
+
+
+class ArmState(Enum):
+    UNKNOWN=0
+    REST=1
+    GRASPING=2
+    PLACING=3
+
+class GripperState(Enum):
+    UNKNOWN=0
+    OPEN=1
+    CLOSED=2
+
+class RobotState:
+    def __init__(self):
+        self.LeftArmState=ArmState.UNKNOWN
+        self.RightArmState=ArmState.UNKNOWN
+        self.LeftGripperState=GripperState.UNKNOWN
+        self.RightGripperState=GripperState.UNKNOWN
 
 
 class Reachy2ManipulationAPI:
@@ -27,6 +46,8 @@ class Reachy2ManipulationAPI:
         self.reachy_real = reachy
         self.reachy = self.reachy_real
         self.simu_preview = simu_preview
+
+        self.robot_state=RobotState()
 
         # TODO Maybe remove this if it is too annoying
         if not self.simu_preview:
@@ -439,6 +460,13 @@ class Reachy2ManipulationAPI:
         self.last_grasp_pose = grasp_pose
         self.last_lift_pose = lift_pose
 
+
+        if left:
+            self.robot_state.LeftArmState=ArmState.GRASPING
+        else:
+            self.robot_state.RightArmState=ArmState.GRASPING
+
+
         return True
 
     # TODO: Implement this method
@@ -549,6 +577,10 @@ class Reachy2ManipulationAPI:
                 time.sleep(0.1)
 
         self.open_gripper(left=left, play_in_simu=play_in_simu)
+        if left:
+            self.robot_state.LeftArmState=ArmState.PLACING
+        else:
+            self.robot_state.RightArmState=ArmState.PLACING
 
         return True
 
@@ -606,6 +638,14 @@ class Reachy2ManipulationAPI:
         if open_gripper:
             self.open_gripper(left=left)
 
+        if left:
+            self.robot_state.LeftArmState=ArmState.REST
+
+
+        else:
+            self.robot_state.RightArmState=ArmState.REST
+
+
         return True
 
     def open_gripper(self, left: bool = False, play_in_simu: bool = False) -> None:
@@ -616,8 +656,10 @@ class Reachy2ManipulationAPI:
 
         if left:
             self.reachy.l_arm.gripper.open()
+            self.robot_state.LeftGripperState=GripperState.OPEN
         else:
             self.reachy.r_arm.gripper.open()
+            self.robot_state.RightGripperState=GripperState.OPEN
 
     def close_gripper(self, left: bool = False, play_in_simu: bool = False) -> None:
         if self.simu_preview and play_in_simu:
@@ -627,8 +669,10 @@ class Reachy2ManipulationAPI:
 
         if left:
             self.reachy.l_arm.gripper.close()
+            self.robot_state.LeftGripperState=GripperState.CLOSED
         else:
             self.reachy.r_arm.gripper.close()
+            self.robot_state.RightGripperState=GripperState.CLOSED
 
     def turn_robot_on(self) -> None:
         self.reachy = self.reachy_real
