@@ -41,6 +41,7 @@ class Reachy2ManipulationAPI:
             if not self.reachy_simu.is_connected():
                 raise ValueError("Simu preview is not available, cannot connect to the simu")
             self.reachy_simu.turn_on()  # turn on the simu robot by default
+            time.sleep(2)
             self.reachy = self.reachy_simu
 
         self.T_world_cam = T_world_cam
@@ -82,6 +83,7 @@ class Reachy2ManipulationAPI:
         visualize: bool = False,
         grasp_gotos_duration: float = 4.0,
         use_cartesian_interpolation: bool = True,
+        x_offset: float = 0.0,
     ) -> bool:
         pose = object_info["pose"]
         rgb = object_info["rgb"]
@@ -91,7 +93,9 @@ class Reachy2ManipulationAPI:
         if len(pose) == 0:
             return False
 
-        grasp_poses, scores, _, _ = self.get_reachable_grasp_poses(rgb, depth, mask, left=left, visualize=visualize)
+        grasp_poses, scores, _, _ = self.get_reachable_grasp_poses(
+            rgb, depth, mask, left=left, visualize=visualize, x_offset=x_offset
+        )
         print("===================")
         print("ALL SCORES:")
         print(scores)
@@ -160,6 +164,7 @@ class Reachy2ManipulationAPI:
         mask: npt.NDArray[np.uint8],
         left: bool = False,
         visualize: bool = False,
+        x_offset: float = 0.0,
     ) -> Tuple[List[npt.NDArray[np.float32]], List[np.float32], List[npt.NDArray[np.float32]], List[np.float32]]:
         rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
         rgb = rgb.astype(np.uint8)
@@ -171,7 +176,7 @@ class Reachy2ManipulationAPI:
         )
 
         if visualize:
-            self.grasp_net.visualize(rgb, mask, pc_full, grasp_poses, scores, pc_colors,openings)
+            self.grasp_net.visualize(rgb, mask, pc_full, grasp_poses, scores, pc_colors, openings)
 
         all_grasp_poses = []
         all_scores = []
@@ -181,6 +186,7 @@ class Reachy2ManipulationAPI:
 
                 # set the pose from camera frame to world frame
                 T_world_graspPose = self.T_world_cam @ T_cam_graspPose
+                T_world_graspPose[:3, 3][0] += x_offset
 
                 T_world_graspPose_sym = T_world_graspPose.copy()
 
@@ -192,13 +198,11 @@ class Reachy2ManipulationAPI:
                 # as grasp z axis is along the base of the "fork", this distance is 0 with a top grasp (z up and x front)
                 dist_top = get_angle_dist(T_world_graspPose[:3, :3], np.eye(3))
 
-                z_grasp=fv_utils.translateInSelf(T_world_graspPose, [0,0,1])-T_world_graspPose
-                z_grasp=z_grasp[:,3][0:3] #x,y,z  vector
-                z_up=np.array([0,0,1])
-                cos_theta=np.dot(z_grasp,z_up)/np.linalg.norm(z_grasp)
-                theta=np.arccos(cos_theta)
-
-
+                z_grasp = fv_utils.translateInSelf(T_world_graspPose, [0, 0, 1]) - T_world_graspPose
+                z_grasp = z_grasp[:, 3][0:3]  # x,y,z  vector
+                z_up = np.array([0, 0, 1])
+                cos_theta = np.dot(z_grasp, z_up) / np.linalg.norm(z_grasp)
+                theta = np.arccos(cos_theta)
 
                 # as grasp z axis is along the base of the "fork", this distance is 0 with a top grasp (z up and x front)
                 # front=np.zeros((3,3))
@@ -242,15 +246,14 @@ class Reachy2ManipulationAPI:
                 if np.abs(dist_front) > np.pi / 2:
                     orientation_score *= 0.1
 
-
-                if cos_theta<0.0:
-                    print(f'WARNING, z grasp towards bottom?!!')
-                    orientation_score *=0.0001
-                elif theta<np.radians(45.0):
-                    print(f'WARNING, z grasp is close to top grasp')
-                    orientation_score *=0.01
+                if cos_theta < 0.0:
+                    print(f"WARNING, z grasp towards bottom?!!")
+                    orientation_score *= 0.0001
+                elif theta < np.radians(45.0):
+                    print(f"WARNING, z grasp is close to top grasp")
+                    orientation_score *= 0.01
                 else:
-                    orientation_score *=theta
+                    orientation_score *= theta
                 # print(f'Angle dist: {dist} orientation_score: {orientation_score} yaw: {yaw} score: {scores[obj_id][i]}')
 
                 # T_world_graspPose = fv_utils.translateInSelf(
@@ -296,8 +299,8 @@ class Reachy2ManipulationAPI:
 
                 all_grasp_poses.append(T_world_graspPose_sym)
 
-                orientation_score*=openings[obj_id][i]*100.0
-                print(f'SCORE: {orientation_score}')
+                orientation_score *= openings[obj_id][i] * 100.0
+                print(f"SCORE: {orientation_score}")
                 all_scores.append(orientation_score)
 
         # Re sorting because we added new grasp poses at the end of the array
@@ -442,7 +445,10 @@ class Reachy2ManipulationAPI:
         duration: float = 4,
         left: bool = False,
         use_cartesian_interpolation: bool = True,
+        x_offset: float = 0.0,
     ) -> bool:
+
+        target_pose[:3, 3][0] += x_offset
 
         simu = self.ask_simu_preview()
         while simu == "simu":  # while the user wants to run the move on the simu robot
@@ -546,6 +552,7 @@ class Reachy2ManipulationAPI:
         goto_duration: float = 4.0,
         use_cartesian_interpolation: bool = True,
         play_in_simu: bool = False,
+        replay: bool = True,
     ) -> bool:
 
         if self.simu_preview and play_in_simu:
@@ -560,7 +567,9 @@ class Reachy2ManipulationAPI:
             arm = self.reachy.l_arm
             start_pose = self.left_start_pose
 
-        if np.array_equal(start_pose, np.eye(4)):
+        assert not np.array_equal(start_pose, np.eye(4))
+        if not replay:
+
             arm.goto_from_matrix(
                 start_pose, duration=goto_duration * 2.0, with_cartesian_interpolation=use_cartesian_interpolation
             )
@@ -569,6 +578,10 @@ class Reachy2ManipulationAPI:
                 self.open_gripper(left=left)
             return True
 
+        # If replay checking if the last poses are not the identity matrix
+        assert not np.array_equal(self.last_lift_pose, np.eye(4))
+        assert not np.array_equal(self.last_grasp_pose, np.eye(4))
+        assert not np.array_equal(self.last_pregrasp_pose, np.eye(4))
         arm.goto_from_matrix(
             target=self.last_lift_pose, duration=goto_duration, with_cartesian_interpolation=use_cartesian_interpolation
         )
@@ -581,9 +594,7 @@ class Reachy2ManipulationAPI:
             target=self.last_pregrasp_pose, duration=goto_duration, with_cartesian_interpolation=use_cartesian_interpolation
         )
 
-        arm.goto_from_matrix(
-            start_pose, duration=goto_duration, with_cartesian_interpolation=use_cartesian_interpolation
-        )
+        arm.goto_from_matrix(start_pose, duration=goto_duration, with_cartesian_interpolation=use_cartesian_interpolation)
 
         if open_gripper:
             self.open_gripper(left=left)
