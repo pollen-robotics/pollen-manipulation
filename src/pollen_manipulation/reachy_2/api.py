@@ -160,6 +160,7 @@ class Reachy2ManipulationAPI:
         mask: npt.NDArray[np.uint8],
         left: bool = False,
         visualize: bool = False,
+        score_threshold: float = 0.3
     ) -> Tuple[List[npt.NDArray[np.float32]], List[np.float32], List[npt.NDArray[np.float32]], List[np.float32]]:
         rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
         rgb = rgb.astype(np.uint8)
@@ -261,8 +262,12 @@ class Reachy2ManipulationAPI:
                     T_world_graspPose, [0, 0, -0.0584]
                 )  # Graspnet returns the base of the gripper mesh, we translate to get the base of the opening
 
-                all_grasp_poses.append(T_world_graspPose)
-                all_scores.append(orientation_score)
+                if orientation_score>=score_threshold:
+                    all_grasp_poses.append(T_world_graspPose)
+                    all_scores.append(orientation_score)
+
+
+                ###### Check the symetric pose
 
                 # rotate 180° along z axis to get symetrical solution
                 T_world_graspPose_sym = fv_utils.rotateInSelf(T_world_graspPose_sym, [0, 0, 180])
@@ -294,11 +299,13 @@ class Reachy2ManipulationAPI:
                     T_world_graspPose_sym, [0, 0, -0.0584]
                 )  # Graspnet returns the base of the gripper mesh, we translate to get the base of the opening
 
-                all_grasp_poses.append(T_world_graspPose_sym)
+                # not very helpful
+                # orientation_score*=openings[obj_id][i]*100.0
 
-                orientation_score*=openings[obj_id][i]*100.0
+                if orientation_score>=score_threshold:
+                    all_grasp_poses.append(T_world_graspPose_sym)
+                    all_scores.append(orientation_score)
                 print(f'SCORE: {orientation_score}')
-                all_scores.append(orientation_score)
 
         # Re sorting because we added new grasp poses at the end of the array
         if len(all_grasp_poses) > 0:
