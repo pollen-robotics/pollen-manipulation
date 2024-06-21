@@ -13,8 +13,9 @@ from scipy.spatial.transform import Rotation as R
 from pollen_manipulation.utils import (
     find_close_reachable_pose,
     get_angle_dist,
-    get_euler_from_homogeneous_matrix,
     normalize_pose,
+    symbolic_ik_is_reachable,
+    turbo_parallel_grasp_poses_reachability_check,
 )
 
 
@@ -105,9 +106,11 @@ class Reachy2ManipulationAPI:
         if len(pose) == 0:
             return False
 
+        start_reachable = time.time()
         grasp_poses, scores, _, _ = self.get_reachable_grasp_poses(
             rgb, depth, mask, left=left, visualize=visualize, x_offset=x_offset
         )
+        print("Time to find reachable grasp poses: ", time.time() - start_reachable)
         print("===================")
         print("ALL SCORES:")
         print(scores)
@@ -164,10 +167,7 @@ class Reachy2ManipulationAPI:
     def _fast_is_pose_reachable(self, pose: npt.NDArray[np.float32], left: bool = False) -> bool:
         name = "l_arm" if left else "r_arm"
 
-        current_goal_position, current_goal_orientation = get_euler_from_homogeneous_matrix(pose)
-        current_pose_tuple = np.array([current_goal_position, current_goal_orientation])
-        solver: SymbolicIK = self.symbolic_ik_solver[name]
-        is_reachable, _, _ = solver.is_reachable_no_limits(current_pose_tuple)
+        is_reachable = symbolic_ik_is_reachable(pose, name, self.symbolic_ik_solver)
 
         return is_reachable
 
@@ -326,35 +326,38 @@ class Reachy2ManipulationAPI:
         reachable_grasp_poses = []
         reachable_scores = []
         print(f"Number of grasp poses generated: {len(all_grasp_poses)}")
-        for i, grasp_pose in enumerate(all_grasp_poses):
-            # For a grasp pose to be reachable, its pregrasp pose must be reachable too
-            # Pregrasp pose is defined as the pose 10cm behind the grasp pose along the z axis of the gripper
+        reachable_grasp_poses, reachable_scores, all_grasp_poses, all_scores = turbo_parallel_grasp_poses_reachability_check(
+            all_grasp_poses, all_scores, self._is_pose_reachable, left=left
+        )
+        # for i, grasp_pose in enumerate(all_grasp_poses):
+        #     # For a grasp pose to be reachable, its pregrasp pose must be reachable too
+        #     # Pregrasp pose is defined as the pose 10cm behind the grasp pose along the z axis of the gripper
 
-            pregrasp_pose = grasp_pose.copy()
-            pregrasp_pose = fv_utils.translateInSelf(grasp_pose, [0, 0, 0.1])
+        #     pregrasp_pose = grasp_pose.copy()
+        #     pregrasp_pose = fv_utils.translateInSelf(grasp_pose, [0, 0, 0.1])
 
-            lift_pose = grasp_pose.copy()
-            lift_pose[:3, 3] += np.array([0, 0, 0.10])  # warning, was 0.20
+        #     lift_pose = grasp_pose.copy()
+        #     lift_pose[:3, 3] += np.array([0, 0, 0.10])  # warning, was 0.20
 
-            pregrasp_pose_reachable = self._fast_is_pose_reachable(pregrasp_pose, left)
-            if not pregrasp_pose_reachable:
-                print(f"\t pregrasp not reachable")
-                continue
+        #     pregrasp_pose_reachable = self._fast_is_pose_reachable(pregrasp_pose, left)
+        #     if not pregrasp_pose_reachable:
+        #         print(f"\t pregrasp not reachable")
+        #         continue
 
-            grasp_pose_reachable = self._fast_is_pose_reachable(grasp_pose, left)
-            if not grasp_pose_reachable:
-                print(f"\t grasp not reachable")
-                continue
+        #     grasp_pose_reachable = self._fast_is_pose_reachable(grasp_pose, left)
+        #     if not grasp_pose_reachable:
+        #         print(f"\t grasp not reachable")
+        #         continue
 
-            lift_pose_reachable = self._fast_is_pose_reachable(lift_pose, left)
-            if not lift_pose_reachable:
-                print(f"\t lift not reachable")
-                continue
+        #     lift_pose_reachable = self._fast_is_pose_reachable(lift_pose, left)
+        #     if not lift_pose_reachable:
+        #         print(f"\t lift not reachable")
+        #         continue
 
-            if pregrasp_pose_reachable and grasp_pose_reachable and lift_pose_reachable:
-                reachable_grasp_poses.append(grasp_pose)
-                reachable_scores.append(all_scores[i])
-                # print(f"Grasp pose {i} is reachable")
+        #     if pregrasp_pose_reachable and grasp_pose_reachable and lift_pose_reachable:
+        #         reachable_grasp_poses.append(grasp_pose)
+        #         reachable_scores.append(all_scores[i])
+        #         # print(f"Grasp pose {i} is reachable")
 
         print(f"Number of reachable grasp poses: {len(reachable_grasp_poses)}")
         return reachable_grasp_poses, reachable_scores, all_grasp_poses, all_scores
