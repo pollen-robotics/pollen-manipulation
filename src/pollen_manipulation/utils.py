@@ -37,32 +37,36 @@ def find_close_reachable_pose(
     """
     print("Finding close reachable pose ...")
     reachable = reachability_function(pose, left)
+    print("========= SIMSIMSIM ==========")
+    print(pose)
+    print("==========")
     if reachable:
+        print("FIRST POSE WAS REACHABLE OMG")
         return pose
 
     # for theta_x in range(0, 180):
     for theta_x in range(0, 360):
         # Checking all combinations of translations and rotations between tolerances
         # this is WAY too long to compute even with small tolerances
-        for y in range(int(-pos_tol * 100), int(pos_tol * 100), 1):
-            for z in range(int(-pos_tol * 100), int(pos_tol * 100), 1):
-                for theta_y in range(-rot_tol, rot_tol, 1):
-                    for theta_z in range(-rot_tol, rot_tol, 1):
-                        candidate_pose: npt.NDArray[np.float32] = fv_utils.translateInSelf(pose.copy(), [0, y / 100, z / 100])
-                        candidate_pose = fv_utils.rotateInSelf(candidate_pose, [0, 0, theta_z], degrees=True)
-                        candidate_pose = fv_utils.rotateInSelf(candidate_pose, [0, theta_y, 0], degrees=True)
-                        reachable = reachability_function(candidate_pose, left)
-                        if reachable:
-                            return candidate_pose
-                        else:
-                            print("(", theta_x, y, z, theta_y, theta_z, ") Not reachable")
+        # for y in range(int(-pos_tol * 100), int(pos_tol * 100), 1):
+        #     for z in range(int(-pos_tol * 100), int(pos_tol * 100), 1):
+        #         for theta_y in range(-rot_tol, rot_tol, 1):
+        #             for theta_z in range(-rot_tol, rot_tol, 1):
+        #                 candidate_pose: npt.NDArray[np.float32] = fv_utils.translateInSelf(pose.copy(), [0, y / 100, z / 100])
+        #                 candidate_pose = fv_utils.rotateInSelf(candidate_pose, [0, 0, theta_z], degrees=True)
+        #                 candidate_pose = fv_utils.rotateInSelf(candidate_pose, [0, theta_y, 0], degrees=True)
+        #                 reachable = reachability_function(candidate_pose, left)
+        #                 if reachable:
+        #                     return candidate_pose
+        #                 else:
+        #                     print("(", theta_x, y, z, theta_y, theta_z, ") Not reachable")
 
         # rotate 1 degree around x axis
         reachable = reachability_function(pose, left)
-        pose = fv_utils.rotateInSelf(pose, [-1 if left else 1, 0, 0], degrees=True)
-
         if reachable:
             return pose
+        pose = fv_utils.rotateInSelf(pose, [-1 if left else 1, 0, 0], degrees=True)
+        print(theta_x)
 
     return None
 
@@ -78,3 +82,12 @@ def get_angle_dist(P: npt.NDArray[np.float32], Q: npt.NDArray[np.float32]) -> fl
     angle_dist: float = np.arccos(cos_theta)  # * (180/np.pi)
     # print(f'DEBUG MAT DIST: angle_dist {angle_dist}')
     return angle_dist
+
+
+def get_euler_from_homogeneous_matrix(
+    homogeneous_matrix: npt.NDArray[np.float32], degrees: bool = False
+) -> tuple[npt.NDArray[np.float32], npt.NDArray[np.float32]]:
+    position = homogeneous_matrix[:3, 3]
+    rotation_matrix = homogeneous_matrix[:3, :3]
+    euler_angles = R.from_matrix(rotation_matrix).as_euler("xyz", degrees=degrees)
+    return position, euler_angles

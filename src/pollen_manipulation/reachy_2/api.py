@@ -7,11 +7,13 @@ import numpy as np
 import numpy.typing as npt
 from contact_graspnet_pytorch.wrapper import ContactGraspNetWrapper
 from reachy2_sdk import ReachySDK
+from reachy2_symbolic_ik.symbolic_ik import SymbolicIK
 from scipy.spatial.transform import Rotation as R
 
 from pollen_manipulation.utils import (
     find_close_reachable_pose,
     get_angle_dist,
+    get_euler_from_homogeneous_matrix,
     normalize_pose,
 )
 
@@ -27,6 +29,16 @@ class Reachy2ManipulationAPI:
         self.reachy_real = reachy
         self.reachy = self.reachy_real
         self.simu_preview = simu_preview
+        self.symbolic_ik_solver: Dict[str:SymbolicIK] = {}
+        self.orbita3D_max_angle = np.deg2rad(42.5)  # 43.5 is too much
+        for arm in ["l_arm", "r_arm"]:
+            self.symbolic_ik_solver[arm] = SymbolicIK(
+                arm=arm,
+                upper_arm_size=0.28,
+                forearm_size=0.28,
+                gripper_size=0.10,
+                wrist_limit=np.rad2deg(self.orbita3D_max_angle),
+            )
 
         # TODO Maybe remove this if it is too annoying
         if not self.simu_preview:
@@ -137,14 +149,6 @@ class Reachy2ManipulationAPI:
 
         return grasp_success
 
-    def _get_euler_from_homogeneous_matrix(
-        self, homogeneous_matrix: npt.NDArray[np.float32], degrees: bool = False
-    ) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.float32]]:
-        position = homogeneous_matrix[:3, 3]
-        rotation_matrix = homogeneous_matrix[:3, :3]
-        euler_angles: npt.NDArray[np.float32] = R.from_matrix(rotation_matrix).as_euler("xyz", degrees=degrees)
-        return position, euler_angles
-
     def _is_pose_reachable(self, pose: npt.NDArray[np.float32], left: bool = False) -> bool:
         if left:
             arm = self.reachy.l_arm
@@ -156,6 +160,16 @@ class Reachy2ManipulationAPI:
         except ValueError:
             return False
         return True
+
+    def _fast_is_pose_reachable(self, pose: npt.NDArray[np.float32], left: bool = False) -> bool:
+        name = "l_arm" if left else "r_arm"
+
+        current_goal_position, current_goal_orientation = get_euler_from_homogeneous_matrix(pose)
+        current_pose_tuple = np.array([current_goal_position, current_goal_orientation])
+        solver: SymbolicIK = self.symbolic_ik_solver[name]
+        is_reachable, _, _ = solver.is_reachable_no_limits(current_pose_tuple)
+
+        return is_reachable
 
     def get_reachable_grasp_poses(  # noqa: C901
         self,
@@ -322,17 +336,17 @@ class Reachy2ManipulationAPI:
             lift_pose = grasp_pose.copy()
             lift_pose[:3, 3] += np.array([0, 0, 0.10])  # warning, was 0.20
 
-            pregrasp_pose_reachable = self._is_pose_reachable(pregrasp_pose, left)
+            pregrasp_pose_reachable = self._fast_is_pose_reachable(pregrasp_pose, left)
             if not pregrasp_pose_reachable:
                 print(f"\t pregrasp not reachable")
                 continue
 
-            grasp_pose_reachable = self._is_pose_reachable(grasp_pose, left)
+            grasp_pose_reachable = self._fast_is_pose_reachable(grasp_pose, left)
             if not grasp_pose_reachable:
                 print(f"\t grasp not reachable")
                 continue
 
-            lift_pose_reachable = self._is_pose_reachable(lift_pose, left)
+            lift_pose_reachable = self._fast_is_pose_reachable(lift_pose, left)
             if not lift_pose_reachable:
                 print(f"\t lift not reachable")
                 continue
@@ -345,7 +359,7 @@ class Reachy2ManipulationAPI:
         print(f"Number of reachable grasp poses: {len(reachable_grasp_poses)}")
         return reachable_grasp_poses, reachable_scores, all_grasp_poses, all_scores
 
-    def synchro_simu_joints(self):
+    def synchro_simu_joints(self) -> None:
         l_real_joints = self.reachy_real.l_arm.get_joints_positions()
         l_gripper_opening = self.reachy_real.l_arm.gripper.opening
 
@@ -522,8 +536,7 @@ class Reachy2ManipulationAPI:
         else:
             arm = self.reachy.r_arm
 
-        # TODO check reachability.
-        target_pose = find_close_reachable_pose(target_pose, self._is_pose_reachable, left=left)
+        target_pose = find_close_reachable_pose(target_pose, self._fast_is_pose_reachable, left=left)
         if target_pose is None:
             print("Could not find a reachable target pose.")
             return False
