@@ -1,4 +1,5 @@
 import time
+from enum import Enum
 from typing import Any, Dict, List, Tuple
 
 import cv2
@@ -8,7 +9,7 @@ import numpy.typing as npt
 from contact_graspnet_pytorch.wrapper import ContactGraspNetWrapper
 from reachy2_sdk import ReachySDK
 from scipy.spatial.transform import Rotation as R
-from enum import Enum
+
 from pollen_manipulation.utils import (
     find_close_reachable_pose,
     get_angle_dist,
@@ -185,7 +186,7 @@ class Reachy2ManipulationAPI:
         mask: npt.NDArray[np.uint8],
         left: bool = False,
         visualize: bool = False,
-        score_threshold: float = 0.3
+        score_threshold: float = 0.3,
         x_offset: float = 0.0,
     ) -> Tuple[List[npt.NDArray[np.float32]], List[np.float32], List[npt.NDArray[np.float32]], List[np.float32]]:
         rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
