@@ -78,65 +78,65 @@ def get_euler_from_homogeneous_matrix(
     return position, euler_angles
 
 
-def symbolic_ik_is_reachable(pose: npt.NDArray[np.float64], name: str, symbolic_ik_solver) -> bool:  # type: ignore
-    prefered_theta = -4 * np.pi / 6
-    if not name.startswith("r"):
-        prefered_theta = -np.pi - prefered_theta
+# def symbolic_ik_is_reachable(pose: npt.NDArray[np.float64], name: str, symbolic_ik_solver) -> bool:  # type: ignore
+#     prefered_theta = -4 * np.pi / 6
+#     if not name.startswith("r"):
+#         prefered_theta = -np.pi - prefered_theta
 
-    goal_position, goal_orientation = get_euler_from_homogeneous_matrix(pose)
-    goal_pose = np.array([goal_position, goal_orientation])
+#     goal_position, goal_orientation = get_euler_from_homogeneous_matrix(pose)
+#     goal_pose = np.array([goal_position, goal_orientation])
 
-    solver: SymbolicIK = symbolic_ik_solver[name]
-    # Checks if an interval exists that handles the wrist limits and the elbow limits
-    (
-        is_reachable,
-        interval,
-        theta_to_joints_func,
-        state_reachable,
-    ) = solver.is_reachable(goal_pose)
+#     solver: SymbolicIK = symbolic_ik_solver[name]
+#     # Checks if an interval exists that handles the wrist limits and the elbow limits
+#     (
+#         is_reachable,
+#         interval,
+#         theta_to_joints_func,
+#         state_reachable,
+#     ) = solver.is_reachable(goal_pose)
 
-    if is_reachable:
-        # Explores the interval to find a solution with no collision elbow-torso
-        is_reachable, theta, state = get_best_discrete_theta(
-            None,
-            interval,
-            theta_to_joints_func,
-            20,
-            prefered_theta,
-            solver.arm,
-        )
-    else:
-        print(f"{name} Pose not reachable before even reaching theta selection. State: {state_reachable}")
+#     if is_reachable:
+#         # Explores the interval to find a solution with no collision elbow-torso
+#         is_reachable, theta, state = get_best_discrete_theta(
+#             None,
+#             interval,
+#             theta_to_joints_func,
+#             20,
+#             prefered_theta,
+#             solver.arm,
+#         )
+#     else:
+#         print(f"{name} Pose not reachable before even reaching theta selection. State: {state_reachable}")
 
-    return is_reachable
+#     return is_reachable
 
 
-def check_grasp_pose_reachability(
-    grasp_pose: npt.NDArray[np.float32],
-    reachability_function: Callable[[npt.NDArray[np.float32], bool], bool],
-    left: bool = True,
-) -> bool:
-    pregrasp_pose = grasp_pose.copy()
-    pregrasp_pose = fv_utils.translateInSelf(grasp_pose, [0, 0, 0.1])
+# def check_grasp_pose_reachability(
+#     grasp_pose: npt.NDArray[np.float32],
+#     reachability_function: Callable[[npt.NDArray[np.float32], bool], bool],
+#     left: bool = True,
+# ) -> bool:
+#     pregrasp_pose = grasp_pose.copy()
+#     pregrasp_pose = fv_utils.translateInSelf(grasp_pose, [0, 0, 0.1])
 
-    lift_pose = grasp_pose.copy()
-    lift_pose[:3, 3] += np.array([0, 0, 0.10])  # warning, was 0.20
+#     lift_pose = grasp_pose.copy()
+#     lift_pose[:3, 3] += np.array([0, 0, 0.10])  # warning, was 0.20
 
-    pregrasp_pose_reachable = reachability_function(pregrasp_pose, left)
-    if not pregrasp_pose_reachable:
-        print(f"\t pregrasp not reachable")
-        return False
+#     pregrasp_pose_reachable = reachability_function(pregrasp_pose, left)
+#     if not pregrasp_pose_reachable:
+#         print(f"\t pregrasp not reachable")
+#         return False
 
-    grasp_pose_reachable = reachability_function(grasp_pose, left)
-    if not grasp_pose_reachable:
-        print(f"\t grasp not reachable")
-        return False
+#     grasp_pose_reachable = reachability_function(grasp_pose, left)
+#     if not grasp_pose_reachable:
+#         print(f"\t grasp not reachable")
+#         return False
 
-    lift_pose_reachable = reachability_function(lift_pose, left)
-    if not lift_pose_reachable:
-        print(f"\t lift not reachable")
-        return False
-    return True
+#     lift_pose_reachable = reachability_function(lift_pose, left)
+#     if not lift_pose_reachable:
+#         print(f"\t lift not reachable")
+#         return False
+#     return True
 
 
 def turbo_parallel_grasp_poses_reachability_check(
