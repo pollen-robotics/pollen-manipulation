@@ -82,31 +82,45 @@ class ParallelGraspPoseReachabilityChecker:
         lift_pose[:3, 3] += np.array([0, 0, 0.10])  # warning, was 0.20
 
         pregrasp_pose_reachable = self.is_reachable(pregrasp_pose, left)
-        if not pregrasp_pose_reachable:
-            print(f"\t pregrasp not reachable")
-            return False
+        # if not pregrasp_pose_reachable:
+        #     print(f"\t pregrasp not reachable")
+        #     return False
 
         grasp_pose_reachable = self.is_reachable(grasp_pose, left)
-        if not grasp_pose_reachable:
-            print(f"\t grasp not reachable")
-            return False
+        # if not grasp_pose_reachable:
+        #     print(f"\t grasp not reachable")
+        #     return False
 
         lift_pose_reachable = self.is_reachable(lift_pose, left)
-        if not lift_pose_reachable:
-            print(f"\t lift not reachable")
-            return False
-        return True
+        # if not lift_pose_reachable:
+        #     print(f"\t lift not reachable")
+        #     return False
+
+        if pregrasp_pose_reachable and grasp_pose_reachable and lift_pose_reachable:
+            return True
+
+        return False
 
     def run_parallel(
         self, all_grasp_poses: List[npt.NDArray[np.float32]], all_scores: List[float], left: bool = False
-    ) -> Tuple[List[npt.NDArray[np.float32]], List[float], List[npt.NDArray[np.float32]], List[float]]:
+    ) -> Tuple[List[npt.NDArray[np.float32]], List[float]]:
+        self.nb_processes = min(self.nb_processes, len(all_grasp_poses))
         chunk_size = len(all_grasp_poses) // self.nb_processes
         poses = [all_grasp_poses[i : i + chunk_size] for i in range(0, len(all_grasp_poses), chunk_size)]
         with Pool(self.nb_processes) as p:
             res = p.starmap(self.check_n_grasp_poses_reachability, zip(poses, repeat(left)))
 
-        # TODO check that starmap conserves the order
-        # print(res)
+        # flatten res
+        res = [reachable for sublist in res for reachable in sublist]
+        reachable_grasp_poses = [pose for pose, reachable in zip(all_grasp_poses, res) if reachable]
+        reachable_scores = [score for score, reachable in zip(all_scores, res) if reachable]
+        for reachable_pose in reachable_grasp_poses:
+            print(reachable_pose)
+            print("---")
+        print("==============")
+        print(res)
+        print("==============")
+        return reachable_grasp_poses, reachable_scores
 
 
 # TODO remove from here

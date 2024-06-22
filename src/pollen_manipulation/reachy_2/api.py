@@ -7,15 +7,14 @@ import numpy as np
 import numpy.typing as npt
 from contact_graspnet_pytorch.wrapper import ContactGraspNetWrapper
 from reachy2_sdk import ReachySDK
-from reachy2_symbolic_ik.symbolic_ik import SymbolicIK
-from scipy.spatial.transform import Rotation as R
 
+from pollen_manipulation.reachy_2.parallel_grasp_pose_reachability_checker import (
+    ParallelGraspPoseReachabilityChecker,
+)
 from pollen_manipulation.utils import (
     find_close_reachable_pose,
     get_angle_dist,
     normalize_pose,
-    symbolic_ik_is_reachable,
-    turbo_parallel_grasp_poses_reachability_check,
 )
 
 
@@ -28,21 +27,13 @@ class Reachy2ManipulationAPI:
         simu_preview: bool = True,
     ) -> None:
         self.reachy_real = reachy
-        self.reachy = self.reachy_real
+        # self.reachy = self.reachy_real
         self.simu_preview = simu_preview
-        self.symbolic_ik_solver: Dict[str:SymbolicIK] = {}
-        self.orbita3D_max_angle = np.deg2rad(42.5)  # 43.5 is too much
-        for arm in ["l_arm", "r_arm"]:
-            self.symbolic_ik_solver[arm] = SymbolicIK(
-                arm=arm,
-                upper_arm_size=0.28,
-                forearm_size=0.28,
-                gripper_size=0.10,
-                wrist_limit=np.rad2deg(self.orbita3D_max_angle),
-            )
+        self.pgprc = ParallelGraspPoseReachabilityChecker()
 
         # TODO Maybe remove this if it is too annoying
-        if not self.simu_preview:
+        # If running on a real robot, ask the user if they really want to execute everything on the robot without simu preview
+        if self.reachy_real._host != "localhost" and not self.simu_preview:
             inp = input("Warning, simu preview is disabled, continue ? (N/y)")
             if inp.lower() != "y":
                 raise ValueError("Cancelling")
@@ -55,7 +46,6 @@ class Reachy2ManipulationAPI:
                 raise ValueError("Simu preview is not available, cannot connect to the simu")
             self.reachy_simu.turn_on()  # turn on the simu robot by default
             time.sleep(2)
-            self.reachy = self.reachy_simu
 
         self.T_world_cam = T_world_cam
         self.K_cam_left = K_cam_left
@@ -68,6 +58,13 @@ class Reachy2ManipulationAPI:
         self.last_lift_pose: npt.NDArray[np.float64] = np.eye(4)
 
         self.grasp_net = ContactGraspNetWrapper()
+
+    @property
+    def reachy(self, simu: bool = False) -> ReachySDK:
+        if simu:
+            assert self.simu_preview == True
+            return self.reachy_simu
+        return self.reachy_real
 
     def ask_simu_preview(self) -> str:
         """
@@ -121,18 +118,22 @@ class Reachy2ManipulationAPI:
 
         grasp_pose = grasp_poses[0]
         score = scores[0]
-        self.reachy = self.reachy_real
-        if left:
-            arm = self.reachy.l_arm
-        else:
-            arm = self.reachy.r_arm
 
-        arm.publish_grasp_poses([grasp_pose], [score])
+        if left:
+            arm = self.get_reachy(simu=False).l_arm
+        else:
+            arm = self.get_reachy(simu=False).r_arm
+
+        try:
+            arm.publish_grasp_poses([grasp_pose], [score])
+        except Exception as e:
+            print("Error while publishing grasp poses: ", e)
+
         print("GRASP POSE selected: ", grasp_pose, "SCORE: ", score)
 
         simu = self.ask_simu_preview()
         while simu == "simu":  # while the user wants to run the move on the simu robot
-            simu_arm = self.reachy_simu.l_arm if left else self.reachy_simu.r_arm
+            simu_arm = self.get_reachy(simu=True).l_arm if left else self.get_reachy(simu=True).r_arm
             simu_arm.publish_grasp_poses([grasp_pose], [score])
             grasp_success = self._execute_grasp(
                 grasp_pose,
@@ -154,22 +155,15 @@ class Reachy2ManipulationAPI:
 
     def _is_pose_reachable(self, pose: npt.NDArray[np.float32], left: bool = False) -> bool:
         if left:
-            arm = self.reachy.l_arm
+            arm = self.get_reachy().l_arm
         else:
-            arm = self.reachy.r_arm
+            arm = self.get_reachy().r_arm
 
         try:
             arm.inverse_kinematics(pose)
         except ValueError:
             return False
         return True
-
-    def _fast_is_pose_reachable(self, pose: npt.NDArray[np.float32], left: bool = False) -> bool:
-        name = "l_arm" if left else "r_arm"
-
-        is_reachable = symbolic_ik_is_reachable(pose, name, self.symbolic_ik_solver)
-
-        return is_reachable
 
     def get_reachable_grasp_poses(  # noqa: C901
         self,
@@ -326,9 +320,10 @@ class Reachy2ManipulationAPI:
         reachable_grasp_poses = []
         reachable_scores = []
         print(f"Number of grasp poses generated: {len(all_grasp_poses)}")
-        reachable_grasp_poses, reachable_scores, all_grasp_poses, all_scores = turbo_parallel_grasp_poses_reachability_check(
-            all_grasp_poses, all_scores, self._is_pose_reachable, left=left
-        )
+        reachable_grasp_poses, reachable_scores = self.pgprc.run_parallel(all_grasp_poses, all_scores, left)
+
+        ## =======================================================
+        ## If for some reason run_parallel does not work as intended, revert back to slow method by uncommenting the following code
         # for i, grasp_pose in enumerate(all_grasp_poses):
         #     # For a grasp pose to be reachable, its pregrasp pose must be reachable too
         #     # Pregrasp pose is defined as the pose 10cm behind the grasp pose along the z axis of the gripper
@@ -339,17 +334,17 @@ class Reachy2ManipulationAPI:
         #     lift_pose = grasp_pose.copy()
         #     lift_pose[:3, 3] += np.array([0, 0, 0.10])  # warning, was 0.20
 
-        #     pregrasp_pose_reachable = self._fast_is_pose_reachable(pregrasp_pose, left)
+        #     pregrasp_pose_reachable = self._is_pose_reachable(pregrasp_pose, left)
         #     if not pregrasp_pose_reachable:
         #         print(f"\t pregrasp not reachable")
         #         continue
 
-        #     grasp_pose_reachable = self._fast_is_pose_reachable(grasp_pose, left)
+        #     grasp_pose_reachable = self._is_pose_reachable(grasp_pose, left)
         #     if not grasp_pose_reachable:
         #         print(f"\t grasp not reachable")
         #         continue
 
-        #     lift_pose_reachable = self._fast_is_pose_reachable(lift_pose, left)
+        #     lift_pose_reachable = self._is_pose_reachable(lift_pose, left)
         #     if not lift_pose_reachable:
         #         print(f"\t lift not reachable")
         #         continue
@@ -358,6 +353,7 @@ class Reachy2ManipulationAPI:
         #         reachable_grasp_poses.append(grasp_pose)
         #         reachable_scores.append(all_scores[i])
         #         # print(f"Grasp pose {i} is reachable")
+        ## =======================================================
 
         print(f"Number of reachable grasp poses: {len(reachable_grasp_poses)}")
         return reachable_grasp_poses, reachable_scores, all_grasp_poses, all_scores
@@ -385,12 +381,9 @@ class Reachy2ManipulationAPI:
         play_in_simu: bool = False,
     ) -> bool:
 
-        if self.simu_preview and play_in_simu:
+        simu = self.simu_preview and play_in_simu
+        if simu:
             self.synchro_simu_joints()
-            self.reachy = self.reachy_simu
-            # TODO set simu reachy to the same state as the real one
-        else:
-            self.reachy = self.reachy_real
 
         print("Executing grasp in ", "simu" if play_in_simu else "real robot")
         grasp_pose = fv_utils.translateInSelf(
@@ -404,9 +397,9 @@ class Reachy2ManipulationAPI:
             return False
 
         if left:
-            arm = self.reachy.l_arm
+            arm = self.get_reachy(simu=simu).l_arm
         else:
-            arm = self.reachy.r_arm
+            arm = self.get_reachy(simu=simu).r_arm
 
         self.open_gripper(left=left, play_in_simu=play_in_simu)
         goto_id = arm.goto_from_matrix(
@@ -513,11 +506,9 @@ class Reachy2ManipulationAPI:
 
         """
 
-        if self.simu_preview and play_in_simu:
+        simu = self.simu_preview and play_in_simu
+        if simu:
             self.synchro_simu_joints()
-            self.reachy = self.reachy_simu
-        else:
-            self.reachy = self.reachy_real
 
         print("Executing place in ", "simu" if play_in_simu else "real robot")
 
@@ -535,11 +526,12 @@ class Reachy2ManipulationAPI:
             raise ValueError("Target pose is too far away (norm > 1.0) or x < 0.0")
 
         if left:
-            arm = self.reachy.l_arm
+            arm = self.get_reachy(simu=simu).l_arm
         else:
-            arm = self.reachy.r_arm
+            arm = self.get_reachy(simu=simu).r_arm
 
-        target_pose = find_close_reachable_pose(target_pose, self._fast_is_pose_reachable, left=left)
+        target_pose = find_close_reachable_pose(target_pose, self.pgprc.check_grasp_pose_reachability, left=left)
+        # target_pose = find_close_reachable_pose(target_pose, self._is_pose_reachable, left=left)
         if target_pose is None:
             print("Could not find a reachable target pose.")
             return False
@@ -553,7 +545,7 @@ class Reachy2ManipulationAPI:
             return False
 
         if goto_id.id != 0:
-            while not self.reachy.is_move_finished(goto_id):
+            while not self.get_reachy(simu=simu).is_move_finished(goto_id):
                 print("Waiting for movement to finish...")
                 time.sleep(0.1)
 
@@ -570,17 +562,13 @@ class Reachy2ManipulationAPI:
         play_in_simu: bool = False,
         replay: bool = True,
     ) -> bool:
-
-        if self.simu_preview and play_in_simu:
-            self.reachy = self.reachy_simu
-        else:
-            self.reachy = self.reachy_real
+        simu = self.simu_preview and play_in_simu
 
         if not left:
-            arm = self.reachy.r_arm
+            arm = self.get_reachy(simu=simu).r_arm
             start_pose = self.right_start_pose
         else:
-            arm = self.reachy.l_arm
+            arm = self.get_reachy(simu=simu).l_arm
             start_pose = self.left_start_pose
 
         assert not np.array_equal(start_pose, np.eye(4))
@@ -617,32 +605,31 @@ class Reachy2ManipulationAPI:
 
         return True
 
+    def get_reachy(self, simu: bool = False) -> ReachySDK:
+        print("LAST GET REACHY", "SIMU" if simu else "REAL")
+        if simu:
+            return self.reachy_simu
+
+        return self.reachy_real
+
     def open_gripper(self, left: bool = False, play_in_simu: bool = False) -> None:
-        if self.simu_preview and play_in_simu:
-            self.reachy = self.reachy_simu
-        else:
-            self.reachy = self.reachy_real
+        simu = self.simu_preview and play_in_simu
 
         if left:
-            self.reachy.l_arm.gripper.open()
+            self.get_reachy(simu=simu).l_arm.gripper.open()
         else:
-            self.reachy.r_arm.gripper.open()
+            self.get_reachy(simu=simu).r_arm.gripper.open()
 
     def close_gripper(self, left: bool = False, play_in_simu: bool = False) -> None:
-        if self.simu_preview and play_in_simu:
-            self.reachy = self.reachy_simu
-        else:
-            self.reachy = self.reachy_real
+        simu = self.simu_preview and play_in_simu
 
         if left:
-            self.reachy.l_arm.gripper.close()
+            self.get_reachy(simu=simu).l_arm.gripper.close()
         else:
-            self.reachy.r_arm.gripper.close()
+            self.get_reachy(simu=simu).r_arm.gripper.close()
 
     def turn_robot_on(self) -> None:
-        self.reachy = self.reachy_real
-        self.reachy.turn_on()
+        self.get_reachy().turn_on()
 
     def stop(self) -> None:
-        self.reachy = self.reachy_real
-        self.reachy.turn_off_smoothly()
+        self.get_reachy().turn_off_smoothly()
