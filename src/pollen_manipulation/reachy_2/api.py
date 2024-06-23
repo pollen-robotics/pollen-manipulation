@@ -1,5 +1,7 @@
 import time
+from copy import deepcopy
 from enum import Enum
+from threading import Thread
 from typing import Any, Dict, List, Tuple
 
 import cv2
@@ -8,7 +10,6 @@ import numpy as np
 import numpy.typing as npt
 from contact_graspnet_pytorch.wrapper import ContactGraspNetWrapper
 from reachy2_sdk import ReachySDK
-from threading import Thread
 
 from pollen_manipulation.reachy_2.parallel_grasp_pose_reachability_checker import (
     ParallelGraspPoseReachabilityChecker,
@@ -72,7 +73,7 @@ class Reachy2ManipulationAPI:
                 raise ValueError("Cancelling")
 
         if self.simu_preview:
-            if self.reachy._host == "localhost":
+            if self.get_reachy()._host == "localhost":
                 raise ValueError("Simu preview is not available the main robot is localhost")
             self.reachy_simu = ReachySDK("localhost", with_synchro=False)
             if not self.reachy_simu.is_connected():
@@ -104,23 +105,16 @@ class Reachy2ManipulationAPI:
         # Effector tracking with the head
         self.is_using_left_arm = False
         self._reset_head = False
-        self._effector_head_tracking_thread = Thread(target=self._effector_head_tracking)
-        self._start_thread()
-        self._effector_head_tracking_thread.start()
+        # self._effector_head_tracking_thread = Thread(target=self._effector_head_tracking)
+        # self._start_thread()
+        # self._effector_head_tracking_thread.start()
 
-    def _start_thread(self) -> None:
-        self._track_effector = True
+    # def _start_thread(self) -> None:
+    #     self._track_effector = True
 
-    def _stop_thread(self) -> None:
-        self._track_effector = False
-        self._effector_head_tracking_thread.join()
-
-    @property
-    def reachy(self, simu: bool = False) -> ReachySDK:
-        if simu:
-            assert self.simu_preview == True
-            return self.reachy_simu
-        return self.reachy_real
+    # def _stop_thread(self) -> None:
+    #     self._track_effector = False
+    #     self._effector_head_tracking_thread.join()
 
     def ask_simu_preview(self) -> str:
         """
@@ -175,22 +169,25 @@ class Reachy2ManipulationAPI:
         grasp_pose = grasp_poses[0]
         score = scores[0]
 
-        if left:
-            arm = self.get_reachy(simu=False).l_arm
-        else:
-            arm = self.get_reachy(simu=False).r_arm
-
-        try:
-            arm.publish_grasp_poses([grasp_pose], [score])
-        except Exception as e:
-            print("Error while publishing grasp poses: ", e)
+        # try:
+        #     if left:
+        #         self.get_reachy(simu=False).l_arm.publish_grasp_poses([grasp_pose], [score])
+        #     else:
+        #         self.get_reachy(simu=False).r_arm.publish_grasp_poses([grasp_pose], [score])
+        # except Exception as e:
+        #     print("Error while publishing grasp poses: ", e)
 
         print("GRASP POSE selected: ", grasp_pose, "SCORE: ", score)
 
         simu = self.ask_simu_preview()
         while simu == "simu":  # while the user wants to run the move on the simu robot
-            simu_arm = self.get_reachy(simu=True).l_arm if left else self.get_reachy(simu=True).r_arm
-            simu_arm.publish_grasp_poses([grasp_pose], [score])
+            try:
+                if left:
+                    self.get_reachy(simu=True).l_arm.publish_grasp_poses([grasp_pose], [score])
+                else:
+                    self.get_reachy(simu=True).r_arm.publish_grasp_poses([grasp_pose], [score])
+            except Exception as e:
+                print("Error while publishing grasp poses: ", e)
             grasp_success = self._execute_grasp(
                 grasp_pose,
                 left=left,
@@ -409,17 +406,30 @@ class Reachy2ManipulationAPI:
         return reachable_grasp_poses, reachable_scores, all_grasp_poses, all_scores
 
     def synchro_simu_joints(self) -> None:
-        l_real_joints = self.get_reachy().l_arm.get_joints_positions()
-        l_gripper_opening = self.get_reachy().l_arm.gripper.opening
+        # l_real_joints = self.get_reachy().l_arm.get_joints_positions()
+        # l_gripper_opening = self.get_reachy().l_arm.gripper.opening
 
-        r_real_joints = self.get_reachy().r_arm.get_joints_positions()
-        r_gripper_opening = self.get_reachy().r_arm.gripper.opening
+        # r_real_joints = self.get_reachy().r_arm.get_joints_positions()
+        # r_gripper_opening = self.get_reachy().r_arm.gripper.opening
 
-        self.get_reachy(simu=True).l_arm.goto_joints(l_real_joints, duration=0.1)
-        self.get_reachy(simu=True).r_arm.goto_joints(r_real_joints, duration=0.1)
+        # self.get_reachy(simu=True).l_arm.goto_joints(l_real_joints, duration=0.1)
+        # self.get_reachy(simu=True).r_arm.goto_joints(r_real_joints, duration=0.1)
 
-        self.get_reachy(simu=True).l_arm.gripper.set_opening(l_gripper_opening)
-        self.get_reachy(simu=True).r_arm.gripper.set_opening(r_gripper_opening)
+        # self.get_reachy(simu=True).l_arm.gripper.set_opening(l_gripper_opening)
+        # self.get_reachy(simu=True).r_arm.gripper.set_opening(r_gripper_opening)
+
+        l_real_joints = self.reachy_real.l_arm.get_joints_positions()
+        l_gripper_opening = self.reachy_real.l_arm.gripper.opening
+
+        r_real_joints = self.reachy_real.r_arm.get_joints_positions()
+        r_gripper_opening = self.reachy_real.r_arm.gripper.opening
+
+        self.reachy_simu.l_arm.goto_joints(l_real_joints, duration=0.1)
+        self.reachy_simu.r_arm.goto_joints(r_real_joints, duration=0.1)
+
+        self.reachy_simu.l_arm.gripper.set_opening(l_gripper_opening)
+        self.reachy_simu.r_arm.gripper.set_opening(r_gripper_opening)
+
         time.sleep(0.2)
 
     def _execute_grasp(
@@ -430,8 +440,6 @@ class Reachy2ManipulationAPI:
         use_cartesian_interpolation: bool = True,
         play_in_simu: bool = False,
     ) -> bool:
-        self.is_using_left_arm = left
-        self._track_effector = True
 
         simu = self.simu_preview and play_in_simu
         if simu:
@@ -448,12 +456,22 @@ class Reachy2ManipulationAPI:
             print("Grasp pose is too far away (norm > 1.0) or x < 0.0")
             return False
 
-        if left:
-            arm = self.get_reachy(simu=simu).l_arm
+        # TODO we went back to using reachy_simu and reachy_real instead of get_reachy(simu=...) here
+        if simu:
+            if left:
+                arm = self.reachy_simu.l_arm
+            else:
+                arm = self.reachy_simu.r_arm
         else:
-            arm = self.get_reachy(simu=simu).r_arm
+            if left:
+                arm = self.reachy_real.l_arm
+            else:
+                arm = self.reachy_real.r_arm
 
         self.open_gripper(left=left, play_in_simu=play_in_simu)
+        x, y, z = pregrasp_pose[:3, 3]
+        self.get_reachy(simu=simu).head.look_at(x, y, z, duration=duration)
+
         goto_id = arm.goto_from_matrix(
             target=pregrasp_pose, duration=duration, with_cartesian_interpolation=use_cartesian_interpolation
         )
@@ -465,6 +483,8 @@ class Reachy2ManipulationAPI:
         # while not self.reachy.is_move_finished(goto_id):
         #     time.sleep(0.1)
 
+        x, y, z = grasp_pose[:3, 3]
+        self.get_reachy(simu=simu).head.look_at(x, y, z, duration=duration)
         goto_id = arm.goto_from_matrix(
             target=grasp_pose, duration=duration, with_cartesian_interpolation=use_cartesian_interpolation
         )
@@ -480,6 +500,9 @@ class Reachy2ManipulationAPI:
 
         lift_pose = grasp_pose.copy()
         lift_pose[:3, 3] += np.array([0, 0, 0.10])
+
+        x, y, z = lift_pose[:3, 3]
+        self.get_reachy(simu=simu).head.look_at(x, y, z, duration=duration)
         goto_id = arm.goto_from_matrix(
             target=lift_pose, duration=duration, with_cartesian_interpolation=use_cartesian_interpolation
         )
@@ -490,7 +513,7 @@ class Reachy2ManipulationAPI:
         # while not self.reachy.is_move_finished(goto_id):
         #     time.sleep(0.1)
 
-        grasp_success = self.check_grasp_success(left=left)
+        grasp_success = self.check_grasp_success(left=left, simu=play_in_simu)
 
         self.last_pregrasp_pose = pregrasp_pose
         self.last_grasp_pose = grasp_pose
@@ -503,11 +526,14 @@ class Reachy2ManipulationAPI:
 
         return grasp_success
 
-    def check_grasp_success(self, left: bool = False, opening_threshold: float = 0.2) -> bool:
+    def check_grasp_success(self, left: bool = False, opening_threshold: float = 0.2, simu: bool = False) -> bool:
+        if simu:
+            return True
+
         if left:
-            arm = self.reachy.l_arm
+            arm = self.reachy_real.l_arm
         else:
-            arm = self.reachy.r_arm
+            arm = self.reachy_real.r_arm
         if arm.gripper.opening < opening_threshold:
             print("Grasp failed, opening is too small")
             return False
@@ -539,7 +565,7 @@ class Reachy2ManipulationAPI:
                 left=left,
                 use_cartesian_interpolation=use_cartesian_interpolation,
                 play_in_simu=True,
-                keep_orientation=True,
+                keep_orientation=keep_orientation,
             )
             simu = self.ask_simu_preview()
 
@@ -552,7 +578,7 @@ class Reachy2ManipulationAPI:
             duration=duration,
             left=left,
             use_cartesian_interpolation=use_cartesian_interpolation,
-            keep_orientation=True,
+            keep_orientation=keep_orientation,
         )
         return place_success
 
@@ -605,16 +631,36 @@ class Reachy2ManipulationAPI:
                 target_pose[:3, :3] = self.right_start_pose[:3, :3]
 
         target_pose[:3, 3] += np.array([0, 0, place_height])
+        pre_target_pose = target_pose.copy()
+        pre_target_pose[:3, 3] += np.array([0, 0, 0.05])
 
         if np.linalg.norm(target_pose[:3, 3]) > 1.0 or target_pose[:3, 3][0] < 0.0:  # safety check
             raise ValueError("Target pose is too far away (norm > 1.0) or x < 0.0")
 
         target_pose = find_close_reachable_pose(target_pose, self.pgprc.check_grasp_pose_reachability, left=left)
+        pre_target_pose = find_close_reachable_pose(pre_target_pose, self.pgprc.check_grasp_pose_reachability, left=left)
         # target_pose = find_close_reachable_pose(target_pose, self._is_pose_reachable, left=left)
-        if target_pose is None:
+        if target_pose is None or pre_target_pose is None:
             print("Could not find a reachable target pose.")
             return False
 
+        x, y, z = pre_target_pose[:3, 3]
+        self.get_reachy(simu=simu).head.look_at(x, y, z, duration=duration)
+        goto_id = arm.goto_from_matrix(
+            target=pre_target_pose, duration=duration, with_cartesian_interpolation=use_cartesian_interpolation
+        )
+
+        if goto_id.id == -1:
+            print("Goto ID for pregrasp pose is -1")
+            return False
+
+        if goto_id.id != 0:
+            while not self.get_reachy(simu=simu).is_move_finished(goto_id):
+                print("Waiting for movement to finish...")
+                time.sleep(0.1)
+
+        x, y, z = target_pose[:3, 3]
+        self.get_reachy(simu=simu).head.look_at(x, y, z, duration=duration)
         goto_id = arm.goto_from_matrix(
             target=target_pose, duration=duration, with_cartesian_interpolation=use_cartesian_interpolation
         )
@@ -629,6 +675,22 @@ class Reachy2ManipulationAPI:
                 time.sleep(0.1)
 
         self.open_gripper(left=left, play_in_simu=play_in_simu)
+
+        x, y, z = pre_target_pose[:3, 3]
+        self.get_reachy(simu=simu).head.look_at(x, y, z, duration=duration)
+        goto_id = arm.goto_from_matrix(
+            target=pre_target_pose, duration=duration, with_cartesian_interpolation=use_cartesian_interpolation
+        )
+
+        if goto_id.id == -1:
+            print("Goto ID for pregrasp pose is -1")
+            return False
+
+        if goto_id.id != 0:
+            while not self.get_reachy(simu=simu).is_move_finished(goto_id):
+                print("Waiting for movement to finish...")
+                time.sleep(0.1)
+
         if left:
             self.get_robot_state(simu=simu).LeftArmState = ArmState.PLACING
         else:
@@ -657,6 +719,8 @@ class Reachy2ManipulationAPI:
         assert not np.array_equal(start_pose, np.eye(4))
         if not replay:
 
+            x, y, z = start_pose[:3, 3]
+            self.get_reachy(simu=simu).head.look_at(x, y, z, duration=goto_duration * 2.0)
             arm.goto_from_matrix(
                 start_pose, duration=goto_duration * 2.0, with_cartesian_interpolation=use_cartesian_interpolation
             )
@@ -677,10 +741,14 @@ class Reachy2ManipulationAPI:
         #     target=self.last_grasp_pose, duration=goto_duration, with_cartesian_interpolation=use_cartesian_interpolation
         # )
 
+        x, y, z = self.last_pregrasp_pose[:3, 3]
+        self.get_reachy(simu=simu).head.look_at(x, y, z, duration=goto_duration * 2.0)
         arm.goto_from_matrix(
             target=self.last_pregrasp_pose, duration=goto_duration, with_cartesian_interpolation=use_cartesian_interpolation
         )
 
+        x, y, z = start_pose[:3, 3]
+        self.get_reachy(simu=simu).head.look_at(x, y, z, duration=goto_duration * 2.0)
         arm.goto_from_matrix(start_pose, duration=goto_duration, with_cartesian_interpolation=use_cartesian_interpolation)
 
         if open_gripper:
@@ -692,13 +760,9 @@ class Reachy2ManipulationAPI:
         else:
             self.get_robot_state(simu=simu).RightArmState = ArmState.REST
 
-        self._reset_head = True
-        self._track_effector = False
-
         return True
 
     def get_reachy(self, simu: bool = False) -> ReachySDK:
-        print("LAST GET REACHY", "SIMU" if simu else "REAL")
         if simu:
             return self.reachy_simu
 
@@ -735,7 +799,6 @@ class Reachy2ManipulationAPI:
             time.sleep(0.1)
 
     def stop(self) -> None:
-        self._stop_thread()
         self.get_reachy().turn_off_smoothly()
 
     def _effector_head_tracking(self) -> None:
@@ -743,18 +806,18 @@ class Reachy2ManipulationAPI:
         while True:
             if self._track_effector:
                 if self.is_using_left_arm:
-                    arm = self.reachy.l_arm
+                    arm = self.get_reachy().l_arm
                 else:
-                    arm = self.reachy.r_arm
+                    arm = self.get_reachy().r_arm
 
                 x, y, z = arm.forward_kinematics(arm.get_joints_positions())[:3, 3]
                 x = min(0.35, x)
 
-                self.reachy.head.look_at(x, y, z, duration=0.2)
+                self.get_reachy().head.look_at(x, y, z, duration=0.05)
 
-                time.sleep(0.2)
+                time.sleep(0.05)
 
             if self._reset_head:
-                self.reachy.head.look_at(0.35, 0.0, 0.0, duration=1.0)
+                self.get_reachy().head.look_at(0.35, 0.0, 0.0, duration=1.0)
                 self._reset_head = False
                 time.sleep(1.0)

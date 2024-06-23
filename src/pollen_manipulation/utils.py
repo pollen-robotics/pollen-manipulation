@@ -4,7 +4,6 @@ from typing import Callable, Optional
 import FramesViewer.utils as fv_utils
 import numpy as np
 import numpy.typing as npt
-from FramesViewer.viewer import Viewer
 from scipy.spatial.transform import Rotation as R
 
 
@@ -49,9 +48,6 @@ def find_close_reachable_pose(
 
     pose[:3, :3] = rot
 
-    fv = Viewer()
-    fv.start()
-
     rot_tol = 20  # deg
 
     for i in range(100):
@@ -62,7 +58,6 @@ def find_close_reachable_pose(
         reachable = reachability_function(pose_candidate, left)
         if reachable:
             return pose
-        fv.pushFrame(pose_candidate, "truc")
         time.sleep(0.1)
 
     # for theta_x in range(0, 40):
