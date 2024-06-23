@@ -70,7 +70,7 @@ class Reachy2ManipulationAPI:
             if not self.reachy_simu.is_connected():
                 raise ValueError("Simu preview is not available, cannot connect to the simu")
             self.reachy_simu.turn_on()  # turn on the simu robot by default
-            time.sleep(2)
+            time.sleep(5)
 
         self.T_world_cam = T_world_cam
         self.K_cam_left = K_cam_left
@@ -418,7 +418,7 @@ class Reachy2ManipulationAPI:
 
         print("Executing grasp in ", "simu" if play_in_simu else "real robot")
         grasp_pose = fv_utils.translateInSelf(
-            grasp_pose, [0, 0, -0.0584]
+            grasp_pose, [0, 0, -0.03]
         )  # Graspnet returns the base of the gripper mesh, we translate to get the base of the opening
         pregrasp_pose = grasp_pose.copy()
         pregrasp_pose = fv_utils.translateInSelf(pregrasp_pose, [0, 0, 0.1])
@@ -626,13 +626,13 @@ class Reachy2ManipulationAPI:
         assert not np.array_equal(self.last_lift_pose, np.eye(4))
         assert not np.array_equal(self.last_grasp_pose, np.eye(4))
         assert not np.array_equal(self.last_pregrasp_pose, np.eye(4))
-        arm.goto_from_matrix(
-            target=self.last_lift_pose, duration=goto_duration, with_cartesian_interpolation=use_cartesian_interpolation
-        )
+        # arm.goto_from_matrix(
+        #     target=self.last_lift_pose, duration=goto_duration, with_cartesian_interpolation=use_cartesian_interpolation
+        # )
 
-        arm.goto_from_matrix(
-            target=self.last_grasp_pose, duration=goto_duration, with_cartesian_interpolation=use_cartesian_interpolation
-        )
+        # arm.goto_from_matrix(
+        #     target=self.last_grasp_pose, duration=goto_duration, with_cartesian_interpolation=use_cartesian_interpolation
+        # )
 
         arm.goto_from_matrix(
             target=self.last_pregrasp_pose, duration=goto_duration, with_cartesian_interpolation=use_cartesian_interpolation

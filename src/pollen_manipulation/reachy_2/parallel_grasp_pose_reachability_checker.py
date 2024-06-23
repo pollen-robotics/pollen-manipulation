@@ -104,6 +104,8 @@ class ParallelGraspPoseReachabilityChecker:
     def run_parallel(
         self, all_grasp_poses: List[npt.NDArray[np.float32]], all_scores: List[float], left: bool = False
     ) -> Tuple[List[npt.NDArray[np.float32]], List[float]]:
+        if len(all_grasp_poses) == 0:
+            return [], []
         self.nb_processes = min(self.nb_processes, len(all_grasp_poses))
         chunk_size = len(all_grasp_poses) // self.nb_processes
         poses = [all_grasp_poses[i : i + chunk_size] for i in range(0, len(all_grasp_poses), chunk_size)]
