@@ -32,6 +32,8 @@ class GripperState(Enum):
     UNKNOWN = 0
     OPEN = 1
     CLOSED = 2
+    CLOSED_WITH_OBJECT =3
+
 
 
 class RobotState:
@@ -203,6 +205,15 @@ class Reachy2ManipulationAPI:
         grasp_success = self._execute_grasp(
             grasp_pose, left=left, duration=grasp_gotos_duration, use_cartesian_interpolation=use_cartesian_interpolation
         )
+
+        if grasp_success:
+            if left:
+                self.get_reachy(simu=simu).l_arm.gripper.close()
+                self.get_robot_state(simu=simu).LeftGripperState = GripperState.CLOSED_WITH_OBJECT
+            else:
+                self.get_reachy(simu=simu).r_arm.gripper.close()
+                self.get_robot_state(simu=simu).RightGripperState = GripperState.CLOSED_WITH_OBJECT
+
 
         return grasp_success
 
