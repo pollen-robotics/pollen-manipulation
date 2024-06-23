@@ -1,8 +1,10 @@
+import time
 from typing import Callable, Optional
 
 import FramesViewer.utils as fv_utils
 import numpy as np
 import numpy.typing as npt
+from FramesViewer.viewer import Viewer
 from scipy.spatial.transform import Rotation as R
 
 
@@ -37,12 +39,38 @@ def find_close_reachable_pose(
     if reachable:
         return pose
 
-    for theta_x in range(0, 360):
-        # rotate 1 degree around x axis
-        reachable = reachability_function(pose, left)
+    print("=== Could not place using the current pose")
+    # If the current pose (that uses the current pose) is not reachable, revert to previous strategy
+
+    if not left:
+        rot = np.array([[0.0, -0.7071068, -0.7071068], [0.0, 0.7071068, -0.7071068], [1.0, 0.0, 0.0]])
+    else:
+        rot = np.array([[0.0, 0.7071068, -0.7071068], [0.0, 0.7071068, 0.7071068], [1.0, -0.0, 0.0]])
+
+    pose[:3, :3] = rot
+
+    fv = Viewer()
+    fv.start()
+
+    rot_tol = 20  # deg
+
+    for i in range(100):
+        thetas = (np.random.rand(2) - 0.5) * 2 * rot_tol
+        thetas = np.hstack((thetas, [0]))
+
+        pose_candidate = fv_utils.rotateInSelf(pose.copy(), thetas, degrees=True)
+        reachable = reachability_function(pose_candidate, left)
         if reachable:
             return pose
-        pose = fv_utils.rotateInSelf(pose, [-1 if left else 1, 0, 0], degrees=True)
+        fv.pushFrame(pose_candidate, "truc")
+        time.sleep(0.1)
+
+    # for theta_x in range(0, 40):
+    #     # rotate 1 degree around x axis
+    #     reachable = reachability_function(pose, left)
+    #     if reachable:
+    #         return pose
+    #     pose = fv_utils.rotateInSelf(pose.copy(), [-1 if left else 1, 0, 0], degrees=True)
 
     return None
 

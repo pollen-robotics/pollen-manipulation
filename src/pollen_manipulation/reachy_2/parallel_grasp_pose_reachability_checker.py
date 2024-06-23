@@ -72,13 +72,13 @@ class ParallelGraspPoseReachabilityChecker:
 
     def check_grasp_pose_reachability(
         self,
-        grasp_pose: npt.NDArray[np.float32],
+        pose: npt.NDArray[np.float32],
         left: bool = True,
     ) -> bool:
-        pregrasp_pose = grasp_pose.copy()
-        pregrasp_pose = fv_utils.translateInSelf(grasp_pose, [0, 0, 0.1])
+        pregrasp_pose = pose.copy()
+        pregrasp_pose = fv_utils.translateInSelf(pose, [0, 0, 0.1])
 
-        lift_pose = grasp_pose.copy()
+        lift_pose = pose.copy()
         lift_pose[:3, 3] += np.array([0, 0, 0.10])  # warning, was 0.20
 
         pregrasp_pose_reachable = self.is_reachable(pregrasp_pose, left)
@@ -86,7 +86,7 @@ class ParallelGraspPoseReachabilityChecker:
         #     print(f"\t pregrasp not reachable")
         #     return False
 
-        grasp_pose_reachable = self.is_reachable(grasp_pose, left)
+        grasp_pose_reachable = self.is_reachable(pose, left)
         # if not grasp_pose_reachable:
         #     print(f"\t grasp not reachable")
         #     return False

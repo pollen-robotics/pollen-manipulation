@@ -50,6 +50,13 @@ class Reachy2ManipulationAPI:
         simu_preview: bool = True,
     ) -> None:
         self.reachy_real = reachy
+        ok = False
+        while not ok:
+            try:
+                ok = self.reachy_real.l_arm != None
+            except Exception as e:
+                print("Error while getting the real arm", e)
+                print("retrying")
         # self.reachy = self.reachy_real
         self.simu_preview = simu_preview
         self.pgprc = ParallelGraspPoseReachabilityChecker()
@@ -71,7 +78,16 @@ class Reachy2ManipulationAPI:
             if not self.reachy_simu.is_connected():
                 raise ValueError("Simu preview is not available, cannot connect to the simu")
             self.reachy_simu.turn_on()  # turn on the simu robot by default
-            time.sleep(5)
+            while not self.reachy_simu.is_on():
+                time.sleep(0.1)
+            time.sleep(1)
+            ok = False
+            while not ok:
+                try:
+                    ok = self.reachy_simu.l_arm != None
+                except Exception as e:
+                    print("Error while getting the simu arm", e)
+                    print("retrying")
 
         self.T_world_cam = T_world_cam
         self.K_cam_left = K_cam_left
@@ -260,21 +276,9 @@ class Reachy2ManipulationAPI:
                 # front[2][0]=1
 
                 if not left:
-                    front = np.array(
-                        [
-                            [0, -0.71, -0.71],
-                            [0, 0.71, -0.71],
-                            [1, 0, 0],
-                        ]
-                    )
+                    front = np.array([[0.0, -0.7071068, -0.7071068], [0.0, 0.7071068, -0.7071068], [1.0, 0.0, 0.0]])
                 else:
-                    front = np.array(
-                        [
-                            [0, 0.71, -0.71],
-                            [0, 0.71, 0.71],
-                            [1, 0, 0],
-                        ]
-                    )
+                    front = np.array([[0.0, 0.7071068, -0.7071068], [0.0, 0.7071068, 0.7071068], [1.0, -0.0, 0.0]])
 
                 dist_front = get_angle_dist(T_world_graspPose[:3, :3], front)
 
@@ -405,17 +409,17 @@ class Reachy2ManipulationAPI:
         return reachable_grasp_poses, reachable_scores, all_grasp_poses, all_scores
 
     def synchro_simu_joints(self) -> None:
-        l_real_joints = self.reachy_real.l_arm.get_joints_positions()
-        l_gripper_opening = self.reachy_real.l_arm.gripper.opening
+        l_real_joints = self.get_reachy().l_arm.get_joints_positions()
+        l_gripper_opening = self.get_reachy().l_arm.gripper.opening
 
-        r_real_joints = self.reachy_real.r_arm.get_joints_positions()
-        r_gripper_opening = self.reachy_real.r_arm.gripper.opening
+        r_real_joints = self.get_reachy().r_arm.get_joints_positions()
+        r_gripper_opening = self.get_reachy().r_arm.gripper.opening
 
-        self.reachy_simu.l_arm.goto_joints(l_real_joints, duration=0.1)
-        self.reachy_simu.r_arm.goto_joints(r_real_joints, duration=0.1)
+        self.get_reachy(simu=True).l_arm.goto_joints(l_real_joints, duration=0.1)
+        self.get_reachy(simu=True).r_arm.goto_joints(r_real_joints, duration=0.1)
 
-        self.reachy_simu.l_arm.gripper.set_opening(l_gripper_opening)
-        self.reachy_simu.r_arm.gripper.set_opening(r_gripper_opening)
+        self.get_reachy(simu=True).l_arm.gripper.set_opening(l_gripper_opening)
+        self.get_reachy(simu=True).r_arm.gripper.set_opening(r_gripper_opening)
         time.sleep(0.2)
 
     def _execute_grasp(
@@ -521,6 +525,7 @@ class Reachy2ManipulationAPI:
         left: bool = False,
         use_cartesian_interpolation: bool = True,
         x_offset: float = 0.0,
+        keep_orientation=False,
     ) -> bool:
 
         target_pose[:3, 3][0] += x_offset
@@ -534,6 +539,7 @@ class Reachy2ManipulationAPI:
                 left=left,
                 use_cartesian_interpolation=use_cartesian_interpolation,
                 play_in_simu=True,
+                keep_orientation=True,
             )
             simu = self.ask_simu_preview()
 
@@ -546,6 +552,7 @@ class Reachy2ManipulationAPI:
             duration=duration,
             left=left,
             use_cartesian_interpolation=use_cartesian_interpolation,
+            keep_orientation=True,
         )
         return place_success
 
@@ -557,6 +564,7 @@ class Reachy2ManipulationAPI:
         left: bool = False,
         use_cartesian_interpolation: bool = True,
         play_in_simu: bool = False,
+        keep_orientation=False,
     ) -> bool:
         """
         Moves the arm to the target pose and then opens the gripper
@@ -579,21 +587,27 @@ class Reachy2ManipulationAPI:
 
         target_pose = np.array(target_pose).reshape(4, 4)  # just in case :)
 
-        # The rotation component of the pose is the identity matrix, but the gripper's frame has a rotation (z aligned with the forearm, x orthogonal to the fingers)
-        # We need to rotate it
-        if left:
-            target_pose[:3, :3] = self.left_start_pose[:3, :3]
-        else:
-            target_pose[:3, :3] = self.right_start_pose[:3, :3]
-        target_pose[:3, 3] += np.array([0, 0, place_height])
-
-        if np.linalg.norm(target_pose[:3, 3]) > 1.0 or target_pose[:3, 3][0] < 0.0:  # safety check
-            raise ValueError("Target pose is too far away (norm > 1.0) or x < 0.0")
-
         if left:
             arm = self.get_reachy(simu=simu).l_arm
         else:
             arm = self.get_reachy(simu=simu).r_arm
+
+        # The rotation component of the pose is the identity matrix, but the gripper's frame has a rotation (z aligned with the forearm, x orthogonal to the fingers)
+        # We need to rotate it
+
+        if keep_orientation:
+            current_orentation = arm.forward_kinematics()[:3, :3]
+            target_pose[:3, :3] = current_orentation
+        else:
+            if left:
+                target_pose[:3, :3] = self.left_start_pose[:3, :3]
+            else:
+                target_pose[:3, :3] = self.right_start_pose[:3, :3]
+
+        target_pose[:3, 3] += np.array([0, 0, place_height])
+
+        if np.linalg.norm(target_pose[:3, 3]) > 1.0 or target_pose[:3, 3][0] < 0.0:  # safety check
+            raise ValueError("Target pose is too far away (norm > 1.0) or x < 0.0")
 
         target_pose = find_close_reachable_pose(target_pose, self.pgprc.check_grasp_pose_reachability, left=left)
         # target_pose = find_close_reachable_pose(target_pose, self._is_pose_reachable, left=left)
@@ -717,6 +731,8 @@ class Reachy2ManipulationAPI:
 
     def turn_robot_on(self) -> None:
         self.get_reachy().turn_on()
+        while not self.get_reachy().is_on():
+            time.sleep(0.1)
 
     def stop(self) -> None:
         self._stop_thread()
