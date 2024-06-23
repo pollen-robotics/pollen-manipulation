@@ -164,7 +164,7 @@ class Reachy2ManipulationAPI:
         mask: npt.NDArray[np.uint8],
         left: bool = False,
         visualize: bool = False,
-        score_threshold: float = 0.3
+        score_threshold: float = 0.3,
         x_offset: float = 0.0,
     ) -> Tuple[List[npt.NDArray[np.float32]], List[np.float32], List[npt.NDArray[np.float32]], List[np.float32]]:
         rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
@@ -435,10 +435,22 @@ class Reachy2ManipulationAPI:
         # while not self.reachy.is_move_finished(goto_id):
         #     time.sleep(0.1)
 
+        grasp_success = self.check_grasp_success(left=left)
+
         self.last_pregrasp_pose = pregrasp_pose
         self.last_grasp_pose = grasp_pose
         self.last_lift_pose = lift_pose
 
+        return grasp_success
+
+    def check_grasp_success(self, left: bool = False, opening_threshold: float = 0.2) -> bool:
+        if left:
+            arm = self.reachy.l_arm
+        else:
+            arm = self.reachy.r_arm
+        if arm.gripper.opening < opening_threshold:
+            print("Grasp failed, opening is too small")
+            return False
         return True
 
     # TODO: Implement this method
