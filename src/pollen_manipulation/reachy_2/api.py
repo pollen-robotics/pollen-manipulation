@@ -1,8 +1,7 @@
 import time
-from copy import deepcopy
 from enum import Enum
 from threading import Thread
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import FramesViewer.utils as fv_utils
@@ -204,6 +203,8 @@ class Reachy2ManipulationAPI:
             grasp_pose, left=left, duration=grasp_gotos_duration, use_cartesian_interpolation=use_cartesian_interpolation
         )
 
+        self.goto_rest_position(left=left, replay=grasp_success, goto_duration=grasp_gotos_duration, open_gripper=False)
+
         return grasp_success
 
     def _is_pose_reachable(self, pose: npt.NDArray[np.float32], left: bool = False) -> bool:
@@ -368,6 +369,14 @@ class Reachy2ManipulationAPI:
         reachable_scores = []
         print(f"Number of grasp poses generated: {len(all_grasp_poses)}")
         reachable_grasp_poses, reachable_scores = self.pgprc.run_parallel(all_grasp_poses, all_scores, left)
+
+        # sanity check
+        if self.simu_preview:
+            print("OOPS I DID IT AGAIN")
+            if not self.reachy_real.is_connected():
+                self.reachy_real.connect()
+            if not self.reachy_simu.is_connected():
+                self.reachy_simu.connect()
 
         ## =======================================================
         ## If for some reason run_parallel does not work as intended, revert back to slow method by uncommenting the following code
@@ -555,17 +564,23 @@ class Reachy2ManipulationAPI:
     ) -> bool:
 
         target_pose[:3, 3][0] += x_offset
+        target_pose = fv_utils.translateInSelf(
+            target_pose, [-0.05, 0, 0]
+        )  # Graspnet returns the base of the gripper mesh, we translate to get the base of the opening
+
+        target_pose, pre_target_pose = self._find_place_poses(
+            target_pose, place_height=place_height, left=left, keep_orientation=keep_orientation
+        )
 
         simu = self.ask_simu_preview()
         while simu == "simu":  # while the user wants to run the move on the simu robot
             place_success = self._place(
                 target_pose,
-                place_height=place_height,
+                pre_target_pose,
                 duration=duration,
                 left=left,
                 use_cartesian_interpolation=use_cartesian_interpolation,
                 play_in_simu=True,
-                keep_orientation=keep_orientation,
             )
             simu = self.ask_simu_preview()
 
@@ -574,52 +589,30 @@ class Reachy2ManipulationAPI:
 
         place_success = self._place(
             target_pose,
-            place_height=place_height,
+            pre_target_pose,
             duration=duration,
             left=left,
             use_cartesian_interpolation=use_cartesian_interpolation,
-            keep_orientation=keep_orientation,
         )
+
+        self.goto_rest_position(left=left, replay=place_success, goto_duration=duration, open_gripper=True)
         return place_success
 
-    def _place(
+    def _find_place_poses(
         self,
         target_pose: npt.NDArray[np.float32],
         place_height: float = 0.0,
-        duration: float = 4,
         left: bool = False,
-        use_cartesian_interpolation: bool = True,
-        play_in_simu: bool = False,
-        keep_orientation=False,
-    ) -> bool:
-        """
-        Moves the arm to the target pose and then opens the gripper
-
-        Args:
-            target_pose (list): 4x4 homogenous matrix representing the target pose
-            place_height (float, optional): Height (in meters) to place the object from. (default: 0.0)
-            duration (float, optional): Duration of the movement in seconds. (default: 4)
-            left (bool, optional): True if the object should be placed with the left arm, False for the right arm. (default: False)
-        Returns:
-            bool: True if the object was placed successfully, False otherwise
-
-        """
-
-        simu = self.simu_preview and play_in_simu
-        if simu:
+        keep_orientation: bool = False,
+    ) -> Tuple[Optional[npt.NDArray[np.float32]], Optional[npt.NDArray[np.float32]]]:
+        if self.simu_preview:
             self.synchro_simu_joints()
-
-        print("Executing place in ", "simu" if play_in_simu else "real robot")
-
         target_pose = np.array(target_pose).reshape(4, 4)  # just in case :)
 
         if left:
-            arm = self.get_reachy(simu=simu).l_arm
+            arm = self.get_reachy().l_arm
         else:
-            arm = self.get_reachy(simu=simu).r_arm
-
-        # The rotation component of the pose is the identity matrix, but the gripper's frame has a rotation (z aligned with the forearm, x orthogonal to the fingers)
-        # We need to rotate it
+            arm = self.get_reachy().r_arm
 
         if keep_orientation:
             current_orentation = arm.forward_kinematics()[:3, :3]
@@ -641,8 +634,43 @@ class Reachy2ManipulationAPI:
         pre_target_pose = find_close_reachable_pose(pre_target_pose, self.pgprc.check_grasp_pose_reachability, left=left)
         # target_pose = find_close_reachable_pose(target_pose, self._is_pose_reachable, left=left)
         if target_pose is None or pre_target_pose is None:
-            print("Could not find a reachable target pose.")
-            return False
+            print("Could not find a reachable target pose or pre target pose.")
+            return None, None
+
+        return target_pose, pre_target_pose
+
+    def _place(
+        self,
+        target_pose: npt.NDArray[np.float32],
+        pre_target_pose: npt.NDArray[np.float32],
+        duration: float = 4,
+        left: bool = False,
+        use_cartesian_interpolation: bool = True,
+        play_in_simu: bool = False,
+    ) -> bool:
+        """
+        Moves the arm to the target pose and then opens the gripper
+
+        Args:
+            target_pose (list): 4x4 homogenous matrix representing the target pose
+            place_height (float, optional): Height (in meters) to place the object from. (default: 0.0)
+            duration (float, optional): Duration of the movement in seconds. (default: 4)
+            left (bool, optional): True if the object should be placed with the left arm, False for the right arm. (default: False)
+        Returns:
+            bool: True if the object was placed successfully, False otherwise
+
+        """
+
+        simu = self.simu_preview and play_in_simu
+        if simu:
+            self.synchro_simu_joints()
+
+        print("Executing place in ", "simu" if play_in_simu else "real robot")
+
+        if left:
+            arm = self.get_reachy(simu=simu).l_arm
+        else:
+            arm = self.get_reachy(simu=simu).r_arm
 
         x, y, z = pre_target_pose[:3, 3]
         self.get_reachy(simu=simu).head.look_at(x, y, z, duration=duration)
@@ -695,6 +723,8 @@ class Reachy2ManipulationAPI:
             self.get_robot_state(simu=simu).LeftArmState = ArmState.PLACING
         else:
             self.get_robot_state(simu=simu).RightArmState = ArmState.PLACING
+
+        self.last_pregrasp_pose = pre_target_pose
 
         return True
 
