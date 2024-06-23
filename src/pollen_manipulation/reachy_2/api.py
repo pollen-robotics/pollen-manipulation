@@ -8,6 +8,7 @@ import numpy as np
 import numpy.typing as npt
 from contact_graspnet_pytorch.wrapper import ContactGraspNetWrapper
 from reachy2_sdk import ReachySDK
+from threading import Thread
 
 from pollen_manipulation.reachy_2.parallel_grasp_pose_reachability_checker import (
     ParallelGraspPoseReachabilityChecker,
@@ -83,6 +84,20 @@ class Reachy2ManipulationAPI:
         self.last_lift_pose: npt.NDArray[np.float64] = np.eye(4)
 
         self.grasp_net = ContactGraspNetWrapper()
+
+        # Effector tracking with the head
+        self.is_using_left_arm = False
+        self._reset_head = False
+        self._effector_head_tracking_thread = Thread(target=self._effector_head_tracking)
+        self._start_thread()
+        self._effector_head_tracking_thread.start()
+
+    def _start_thread(self) -> None:
+        self._track_effector = True
+
+    def _stop_thread(self) -> None:
+        self._track_effector = False
+        self._effector_head_tracking_thread.join()
 
     @property
     def reachy(self, simu: bool = False) -> ReachySDK:
@@ -411,6 +426,8 @@ class Reachy2ManipulationAPI:
         use_cartesian_interpolation: bool = True,
         play_in_simu: bool = False,
     ) -> bool:
+        self.is_using_left_arm = left
+        self._track_effector = True
 
         simu = self.simu_preview and play_in_simu
         if simu:
@@ -661,6 +678,9 @@ class Reachy2ManipulationAPI:
         else:
             self.get_robot_state(simu=simu).RightArmState = ArmState.REST
 
+        self._reset_head = True
+        self._track_effector = False
+
         return True
 
     def get_reachy(self, simu: bool = False) -> ReachySDK:
@@ -699,4 +719,26 @@ class Reachy2ManipulationAPI:
         self.get_reachy().turn_on()
 
     def stop(self) -> None:
+        self._stop_thread()
         self.get_reachy().turn_off_smoothly()
+
+    def _effector_head_tracking(self) -> None:
+        y = 0.1
+        while True:
+            if self._track_effector:
+                if self.is_using_left_arm:
+                    arm = self.reachy.l_arm
+                else:
+                    arm = self.reachy.r_arm
+
+                x, y, z = arm.forward_kinematics(arm.get_joints_positions())[:3, 3]
+                x = min(0.35, x)
+
+                self.reachy.head.look_at(x, y, z, duration=0.2)
+
+                time.sleep(0.2)
+
+            if self._reset_head:
+                self.reachy.head.look_at(0.35, 0.0, 0.0, duration=1.0)
+                self._reset_head = False
+                time.sleep(1.0)
